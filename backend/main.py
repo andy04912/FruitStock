@@ -117,8 +117,7 @@ async def lifespan(app: FastAPI):
             redis_client = None
     
     # Weekly IPO Check (Monday 9:00 AM)
-    # scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', day_of_week='mon', hour=9, minute=0)
-    scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', second=20)
+    scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', day_of_week='mon', hour=9, minute=0)
 
     # Root Market Dividends (Every 2 hours)
     scheduler.add_job(market_engine.payout_dividends, 'interval', hours=2)

@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Professional FinTech Dark Theme */
+    --background: 222 47% 11%; /* Slate 900 - Deep Professional Blue-Black */
+    --foreground: 210 40% 98%;
+
+    --card: 217 33% 17%; /* Slate 800 */
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%; /* Professional Blue */
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 215 25% 27%; /* Slate 700 */
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 215 25% 27%; 
+    --muted-foreground: 215 20% 75%; /* Lighter for readability */
+
+    --accent: 262 83% 58%; /* Vivid but professional Purple for Gurus */
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84% 60%; /* Clear Red */
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 30%; /* Higher contrast border */
+    --input: 217 33% 17%;
+    --ring: 224 76% 48%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}

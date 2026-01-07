@@ -71,10 +71,13 @@ async def async_tick_job():
     with Session(engine) as session:
         stocks = session.exec(select(Stock)).all()
         
+        current_forecast = event_system.get_forecast()
+        
         data = {
             "type": "tick",
             "stocks": [s.model_dump() for s in stocks],
-            "event": current_event.model_dump() if current_event else None
+            "event": current_event.model_dump() if current_event else None,
+            "forecast": current_forecast
         }
     # Broadcast in async context
     await manager.broadcast(json.dumps(data, default=str))
@@ -114,10 +117,18 @@ async def lifespan(app: FastAPI):
             redis_client = None
     
     # Weekly IPO Check (Monday 9:00 AM)
-    scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', day_of_week='mon', hour=9, minute=0, args=[0.05]) # 5% chance
+    # scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', day_of_week='mon', hour=9, minute=0)
+    scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', second=20)
+
+    # Root Market Dividends (Every 2 hours)
+    scheduler.add_job(market_engine.payout_dividends, 'interval', hours=2)
     
     # Job runs every second
     scheduler.add_job(async_tick_job, 'interval', seconds=1)
+    
+    # Cleanup old news every hour (keep last 24h)
+    scheduler.add_job(event_system.cleanup_old_events, 'interval', hours=1, args=[24])
+    
     scheduler.start()
     
     yield

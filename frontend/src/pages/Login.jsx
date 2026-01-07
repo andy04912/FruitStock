@@ -48,7 +48,8 @@ export default function Login() {
     <div className="flex items-center justify-center min-h-screen bg-muted/40">
       <Card className="w-[350px]">
         <CardHeader className="justify-center items-center text-center">
-          <img src={`${import.meta.env.BASE_URL}logo.jpg`} alt="Logo" className="h-16 w-16 mb-2 object-contain drop-shadow-lg" />
+          <img src="/logo.jpg" alt="Logo" className="h-20 w-20 mb-4 object-cover rounded-xl shadow-lg border-2 border-white/20" />
+          <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-cyan-500 mb-2">股票菜市場</h1>
           <CardTitle>{isRegister ? "註冊帳戶" : "登入系統"}</CardTitle>
         </CardHeader>
         <CardContent>

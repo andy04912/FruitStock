@@ -59,6 +59,10 @@ class EventSystem:
         self.WINDOW_MINUTES = 60 
         self.current_event = None
         self.event_end_time = None
+        
+        # Forecast System
+        self.next_event_cache = None # { 'target': stock, 'data': dict, 'time': datetime }
+        self.FORECAST_SECONDS = 180 # 3 Minutes ahead
 
     def _start_new_window(self, now):
         self.window_start = now
@@ -85,6 +89,104 @@ class EventSystem:
                 self.current_event = None
                 self.event_end_time = None
         return self.current_event
+    
+    def get_forecast(self):
+        """Returns the forecast event if available"""
+        if self.next_event_cache:
+            # Return a simplified dict for frontend
+            return {
+                "type": "forecast",
+                "stock_name": self.next_event_cache['target'].name,
+                "eta_seconds": int((self.next_event_cache['time'] - datetime.now()).total_seconds())
+            }
+        return None
+
+    def _generate_event_data(self, session):
+        # Helper to generate event content WITHOUT committing
+        stocks = session.exec(select(Stock)).all()
+        if not stocks: return None
+        
+        target = random.choice(stocks)
+        
+        # --- 1. Tier Selection (Weighted + Rumor) ---
+        tier_choice = random.choices(
+            ['TIER_0', 'TIER_1', 'TIER_2', 'TIER_3', 'TIER_4'],
+            weights=[0.15, 0.82, 0.025, 0.0049, 0.0001],
+            k=1
+        )[0]
+        
+        if tier_choice == 'TIER_0':
+            template = random.choice(TIER_0_RUMOR)
+            impact = random.uniform(0.05, 0.15)
+            tier_display = 'RUMOR 🤫'
+            tier_k = 'RUMOR'
+        elif tier_choice == 'TIER_1':
+            template = random.choice(TIER_1_NORMAL)
+            impact = random.uniform(0.03, 0.10)
+            tier_display = 'NORMAL'
+            tier_k = 'NORMAL'
+        elif tier_choice == 'TIER_2':
+            template = random.choice(TIER_2_SIGNIFICANT)
+            impact = random.uniform(0.10, 0.25)
+            tier_display = 'SIGNIFICANT'
+            tier_k = 'SIGNIFICANT'
+        elif tier_choice == 'TIER_3':
+            template = random.choice(TIER_3_SHOCK)
+            impact = random.uniform(0.25, 0.50)
+            tier_display = 'SHOCK ⚡'
+            tier_k = 'SHOCK'
+        else: # TIER_4
+            template = random.choice(TIER_4_BLACK_SWAN)
+            impact = random.uniform(0.80, 1.00)
+            tier_display = 'BLACK SWAN 💀'
+            tier_k = 'BLACK_SWAN'
+        
+        # --- 3. Critical Boost ---
+        is_critical = False
+        if tier_choice != 'TIER_0' and random.random() < 0.05:
+            boost_factor = random.uniform(1.5, 2.5)
+            impact *= boost_factor
+            is_critical = True
+        
+        # --- 4. Direction ---
+        if random.random() < 0.5:
+            impact = -impact
+        
+        direction_str = 'UP' if impact > 0 else 'DOWN'
+
+        # --- 5. Content Generation ---
+        title = template["title"]
+        description = template["desc"].format(name=target.name)
+        
+        try:
+            ai_data = None
+            if tier_choice == 'TIER_0':
+                ai_data = ai_service.generate_fake_news(target.name)
+            else:
+                ai_data = ai_service.generate_market_event(target.name, tier_k, direction_str)
+            
+            if ai_data:
+                title = ai_data['title']
+                description = ai_data['desc']
+        except Exception as e:
+            print(f"AI Event gen failed, using fallback: {e}")
+
+        if is_critical:
+            description += " (市場反應極度劇烈！)"
+        if tier_choice == 'TIER_0':
+            title = f"[八卦] {title}"
+        
+        duration = random.randint(30, 90)
+        
+        return {
+            'title': title,
+            'description': description,
+            'target': target,
+            'impact': impact,
+            'duration': duration,
+            'tier_display': tier_display,
+            'is_critical': is_critical
+        }
 
     def generate_random_event(self):
         now = datetime.now().replace(microsecond=0)
@@ -93,112 +195,71 @@ class EventSystem:
         if self.window_start is None or now >= self.window_start + timedelta(minutes=self.WINDOW_MINUTES):
             self._start_new_window(now)
             
-        # Check if any scheduled event is due (or past due within reasonable margin)
-        # We pop from list to execute once
-        if self.scheduled_times and now >= self.scheduled_times[0]:
-            # Trigger event!
-            trigger_time = self.scheduled_times.pop(0)
-            
-            with self.session_factory() as session:
-                stocks = session.exec(select(Stock)).all()
-                if not stocks: return None
-                
-                target = random.choice(stocks)
-                
-                # --- 1. Tier Selection (Weighted + Rumor) ---
-                # Adjusted for Realism: Surges (Tier 2+) should be rare.
-                tier_choice = random.choices(
-                    ['TIER_0', 'TIER_1', 'TIER_2', 'TIER_3', 'TIER_4'],
-                    weights=[0.15, 0.82, 0.025, 0.0049, 0.0001], # 82% Normal, 2.5% Significant
-                    k=1
-                )[0]
-                
-                # --- 2. Template & Base Impact ---
-                tier_k = 'NORMAL' # For AI
-                tier_display = 'NORMAL' # For Log
-                
-                if tier_choice == 'TIER_0':
-                    template = random.choice(TIER_0_RUMOR)
-                    impact = random.uniform(0.05, 0.15) # Chaotic impact
-                    tier_k = 'RUMOR'
-                    tier_display = 'RUMOR 🤫'
-                elif tier_choice == 'TIER_1':
-                    template = random.choice(TIER_1_NORMAL)
-                    impact = random.uniform(0.03, 0.10)
-                    tier_k = 'NORMAL'
-                elif tier_choice == 'TIER_2':
-                    template = random.choice(TIER_2_SIGNIFICANT)
-                    impact = random.uniform(0.10, 0.25)
-                    tier_k = 'SIGNIFICANT'
-                    tier_display = 'SIGNIFICANT'
-                elif tier_choice == 'TIER_3':
-                    template = random.choice(TIER_3_SHOCK)
-                    impact = random.uniform(0.25, 0.50)
-                    tier_k = 'SHOCK'
-                    tier_display = 'SHOCK ⚡'
-                else: # TIER_4
-                    template = random.choice(TIER_4_BLACK_SWAN)
-                    impact = random.uniform(0.80, 1.00)
-                    tier_k = 'BLACK_SWAN'
-                    tier_display = 'BLACK SWAN 💀'
-                
-                # --- 3. Critical Boost ---
-                is_critical = False
-                # Rumors cannot critically boost
-                if tier_choice != 'TIER_0' and random.random() < 0.05:
-                    boost_factor = random.uniform(1.5, 2.5)
-                    impact *= boost_factor
-                    is_critical = True
-                
-                # --- 4. Direction ---
-                if random.random() < 0.5:
-                    impact = -impact
-                
-                direction_str = 'UP' if impact > 0 else 'DOWN'
+        if not self.scheduled_times:
+            return self.get_active_event()
 
-                # --- 5. Content Generation (AI vs Fallback) ---
-                title = template["title"]
-                description = template["desc"].format(name=target.name)
-                
-                # Try AI first
-                try:
-                    ai_data = None
-                    if tier_choice == 'TIER_0':
-                        ai_data = ai_service.generate_fake_news(target.name)
-                    else:
-                        ai_data = ai_service.generate_market_event(target.name, tier_k, direction_str)
-                    
-                    if ai_data:
-                        title = ai_data['title']
-                        description = ai_data['desc']
-                except Exception as e:
-                    print(f"AI Event gen failed, using fallback: {e}")
-
-                if is_critical:
-                    description += " (市場反應極度劇烈！)"
-                if tier_choice == 'TIER_0':
-                    title = f"[八卦] {title}"
-                
-                duration = random.randint(30, 90)
-                
-                event = EventLog(
-                    title=title,
-                    description=description,
-                    target_stock_id=target.id,
-                    impact_multiplier=impact,
-                    duration_seconds=duration
-                )
-                session.add(event)
-                session.commit()
-                
-                # Log
-                crit_tag = "CRITICAL HIT! 🔥" if is_critical else ""
-                print(f"[EventSystem] [{tier_display}] {crit_tag} Impact: {impact*100:.1f}% | {event.title} - {target.name}")
-                
-                # Set active event
-                self.current_event = event
-                self.event_end_time = now + timedelta(seconds=duration)
-                
-                return event
+        next_time = self.scheduled_times[0]
         
+        # A. Check if it's time to EXECUTE (Commit)
+        if now >= next_time:
+            self.scheduled_times.pop(0) # Remove from schedule
+            
+            # Use cached data if available, or generate fresh
+            data = None
+            if self.next_event_cache and self.next_event_cache['time'] == next_time:
+                data = self.next_event_cache['data']
+                self.next_event_cache = None # Clear cache
+            else:
+                with self.session_factory() as session:
+                    data = self._generate_event_data(session)
+
+            if data:
+                with self.session_factory() as session:
+                    # We need to re-fetch target to ensure attached to session
+                    target = session.get(Stock, data['target'].id)
+                    
+                    event = EventLog(
+                        title=data['title'],
+                        description=data['description'],
+                        target_stock_id=target.id,
+                        impact_multiplier=data['impact'],
+                        duration_seconds=data['duration']
+                    )
+                    session.add(event)
+                    session.commit()
+                    
+                    crit_tag = "CRITICAL HIT! 🔥" if data['is_critical'] else ""
+                    print(f"[EventSystem] [{data['tier_display']}] {crit_tag} Impact: {data['impact']*100:.1f}% | {event.title} - {target.name}")
+                    
+                    self.current_event = event
+                    self.event_end_time = now + timedelta(seconds=data['duration'])
+                    return event
+
+        # B. Check if it's time to FORECAST (Pre-gen)
+        # If we are within FORECAST_SECONDS of next_time, and haven't cached yet
+        elif (next_time - now).total_seconds() <= self.FORECAST_SECONDS:
+            if not self.next_event_cache:
+                with self.session_factory() as session:
+                    data = self._generate_event_data(session)
+                    if data:
+                        self.next_event_cache = {
+                            'target': data['target'], 
+                            'data': data,
+                            'time': next_time
+                        }
+                        print(f"[EventSystem] Forecast generated for {next_time}: {data['target'].name}")
+
         return self.get_active_event()
+
+    def cleanup_old_events(self, retention_hours=24):
+        """Deletes events older than retention_hours"""
+        from sqlmodel import delete
+        cutoff = datetime.now() - timedelta(hours=retention_hours)
+        with self.session_factory() as session:
+            try:
+                statement = delete(EventLog).where(EventLog.created_at < cutoff)
+                session.exec(statement)
+                session.commit()
+                print(f"[EventSystem] Cleanup: Deleted old events prior to {cutoff.strftime('%Y-%m-%d %H:%M')}")
+            except Exception as e:
+                print(f"[EventSystem] Cleanup failed: {e}")

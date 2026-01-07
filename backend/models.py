@@ -8,6 +8,7 @@ class TransactionType(str, Enum):
     SELL = "sell"
     SHORT = "short"
     COVER = "cover"
+    DIVIDEND = "dividend"
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -29,6 +30,8 @@ class Stock(SQLModel, table=True):
     price: float
     day_open: float = Field(default=0.0)
     volatility: float = 0.02
+    category: str = Field(default="FRUIT") # "FRUIT" or "MEAT"
+    dividend_yield: float = Field(default=0.0)
     
     portfolios: List["Portfolio"] = Relationship(back_populates="stock")
     transactions: List["Transaction"] = Relationship(back_populates="stock")

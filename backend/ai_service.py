@@ -23,9 +23,10 @@ FALLBACK_COMPANIES = [
     {"name": "GlobeX", "symbol": "GLOB", "desc": "致力於透過征...服務世界來改善生活。"},
 ]
 
-def generate_new_company():
+def generate_new_company(category=None):
     """
     Generates a new fictional company using Gemini API.
+    category: 'FRUIT', 'MEAT', 'ROOT' or None (Generic)
     Returns a dict: {"name": str, "symbol": str, "desc": str}
     """
     api_key = os.getenv("GEMINI_API_KEY")
@@ -38,17 +39,25 @@ def generate_new_company():
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(LITE_MODEL)
         
-        prompt = """
-        Generate a fictional, creative company name, ticker symbol (3-5 letters), and a short 1-sentence description.
-        The theme can be Cyberpunk, Sci-Fi, Meme, Crypto, or Futuristic Tech.
-        Make it sound cool or funny.
+        theme_instruction = "The theme can be Cyberpunk, Sci-Fi, Meme, Crypto, or Futuristic Tech."
+        if category == 'FRUIT':
+            theme_instruction = "The company Name MUST be a specific Fruit (e.g. Peach, Mango, Berry, Lime) or orchard related. The Symbol should be related to that fruit. STRICTLY fruit themed."
+        elif category == 'MEAT':
+            theme_instruction = "The company Name MUST be a specific Meat/Cut (e.g. Wagyu, Bacon, Ribs, Sausage) or BBQ related. The Symbol should be related to that meat. STRICTLY meat themed."
+        elif category == 'ROOT':
+            theme_instruction = "The company Name MUST be a specific Root Vegetable (e.g. Potato, Yam, Turnip, Ginger) or underground crop. The Symbol should be related to roots. STRICTLY root themed."
+
+        prompt = f"""
+        Generate company name, ticker symbol (3-5 letters), and a short 1-sentence description.
+        {theme_instruction}
+        The Company Name MUST only use Two words.
         
         Response format (JSON only):
-        {
+        {{
             "name": "Company Name",
             "symbol": "TICKER",
             "desc": "Short description."
-        }
+        }}
         """
         
         response = model.generate_content(prompt)

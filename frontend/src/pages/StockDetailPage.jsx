@@ -277,17 +277,32 @@ export default function StockDetailPage() {
                             <CardTitle className="flex justify-between items-center flex-wrap gap-4">
                                 <div className="flex items-center gap-2">
                                     <span>{stock.name} ({stock.symbol})</span>
+                                    {stock.category === 'ROOT' && (
+                                                <div className="mt-1 flex flex-col items-center animate-in fade-in slide-in-from-right-4 duration-500">
+                                                    <Badge className="bg-amber-500/20 text-amber-500 border-amber-600/50 hover:bg-amber-500/30 text-[10px] px-1.5 py-0.5 h-auto gap-1 mb-0.5 cursor-help" title="持有此股票每 2 小時會自動發放股息，費率每期變動 (1%~5%)">
+                                                        💰 下期殖利率 {((stock.dividend_yield || 0.01) * 100).toFixed(2)}%
+                                                    </Badge>
+                                                    {holdingQuantity > 0 && (
+                                                        <span className="text-[10px] text-amber-300/80 font-mono">
+                                                            預估下次股息: ${(holdingQuantity * stock.price * (stock.dividend_yield || 0.01)).toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                 </div>
                                 <div className="flex items-center gap-4">
                                      <div className="text-right">
                                          <div className={`text-3xl font-mono font-bold ${(stock.price - stock.day_open) >= 0 ? "text-rose-400" : "text-emerald-400"}`}>
                                              ${stock.price.toFixed(2)}
                                          </div>
-                                         {stock.day_open > 0 && (
-                                             <div className={`text-sm font-mono font-bold ${(stock.price - stock.day_open) >= 0 ? "text-rose-400" : "text-emerald-400"}`}>
-                                                 {(stock.price - stock.day_open) >= 0 ? "+" : ""}{((stock.price - stock.day_open) / stock.day_open * 100).toFixed(2)}%
-                                             </div>
-                                         )}
+                                         <div className="flex flex-col items-end">
+                                            {stock.day_open > 0 && (
+                                                <div className={`text-sm font-mono font-bold ${(stock.price - stock.day_open) >= 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                                                    {(stock.price - stock.day_open) >= 0 ? "+" : ""}{((stock.price - stock.day_open) / stock.day_open * 100).toFixed(2)}%
+                                                </div>
+                                            )}
+                                            
+                                        </div>
                                      </div>
                                      <div className="flex gap-2">
                                          <Button 

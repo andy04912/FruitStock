@@ -9,7 +9,8 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import StockDetailPage from "./pages/StockDetailPage";
 import PortfolioPage from "./pages/PortfolioPage";
-import NewsPage from "./pages/NewsPage"; // Added
+import NewsPage from "./pages/NewsPage";
+import LeaderboardPage from "./pages/LeaderboardPage";
 
 import NewsTicker from "./components/common/NewsTicker";
 
@@ -24,7 +25,7 @@ function AppContent() {
             <div className="h-screen w-screen overflow-hidden bg-background font-sans antialiased text-foreground flex flex-col">
                 <Navbar />
                 <NewsTicker />
-                <div className="flex-1 overflow-y-auto relative scroll-smooth">
+                <div id="main-content" className="flex-1 overflow-y-auto relative scroll-smooth">
                     <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route 
@@ -42,6 +43,10 @@ function AppContent() {
                         <Route 
                             path="/news" 
                             element={<PrivateRoute><NewsPage /></PrivateRoute>} 
+                        />
+                        <Route 
+                            path="/leaderboard" 
+                            element={<PrivateRoute><LeaderboardPage /></PrivateRoute>} 
                         />
                     </Routes>
                 </div>

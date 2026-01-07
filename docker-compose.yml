@@ -27,6 +27,7 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=43200
       - DATABASE_URL=postgresql://user:password@postgres:5432/stock_sim
       - REDIS_URL=redis://redis:6379/0
+      - TZ=Asia/Taipei
     env_file:
       - ./backend/.env
     depends_on:

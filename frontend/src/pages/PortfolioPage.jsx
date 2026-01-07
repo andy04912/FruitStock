@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/components";
+import { Card, CardContent, CardHeader, CardTitle, Button } from "../components/ui/components";
 import BonusWidget from "../components/common/BonusWidget";
 
 export default function PortfolioPage() {

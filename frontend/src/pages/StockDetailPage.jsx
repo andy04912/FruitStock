@@ -145,6 +145,7 @@ export default function StockDetailPage() {
     const [holdingQuantity, setHoldingQuantity] = useState(0); 
     const [holdingAvgCost, setHoldingAvgCost] = useState(0); 
     const [tradeTrigger, setTradeTrigger] = useState(0); // Trigger for refetching
+    const [fitTrigger, setFitTrigger] = useState(0);
     const [news, setNews] = useState([]);
     const [predictions, setPredictions] = useState([]);
     const lastEventRef = React.useRef(null);
@@ -315,9 +316,12 @@ export default function StockDetailPage() {
                                          <Button 
                                             size="sm" 
                                             variant={viewMode === "history" ? "default" : "outline"}
-                                            onClick={() => setViewMode("history")}
+                                            onClick={() => {
+                                                setViewMode("history");
+                                                setFitTrigger(prev => prev + 1);
+                                            }}
                                          >
-                                            歷史走勢
+                                            完整歷史
                                          </Button>
                                      </div>
                                 </div>
@@ -342,7 +346,7 @@ export default function StockDetailPage() {
                             )}
 
                             <div>
-                                <CandlestickChart data={chartData} />
+                                <CandlestickChart data={chartData} fitTrigger={fitTrigger} />
                             </div>
                         </CardContent>
                     </Card>

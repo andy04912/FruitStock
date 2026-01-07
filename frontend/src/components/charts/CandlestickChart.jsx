@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 
-export const CandlestickChart = ({ data, colors = {} }) => {
+export const CandlestickChart = ({ data, colors = {}, fitTrigger = 0 }) => {
     const chartContainerRef = useRef();
     const chartInstance = useRef(null);
     const seriesInstance = useRef(null);
@@ -77,11 +77,19 @@ export const CandlestickChart = ({ data, colors = {} }) => {
         };
     }, [backgroundColor, textColor, upColor, downColor]); // Re-create if colors change, but data updates separately
 
+    // Effect for manual fit trigger
+    useEffect(() => {
+        if (chartInstance.current && fitTrigger > 0) {
+            chartInstance.current.timeScale().fitContent();
+        }
+    }, [fitTrigger]);
+
     // Update data effect
     useEffect(() => {
         if (seriesInstance.current && data) {
              seriesInstance.current.setData(data);
-             // chartInstance.current.timeScale().fitContent(); // Optional: Auto fit
+             // Only auto-fit on initial load if no data previously
+             // or rely on fitTrigger
         }
     }, [data]);
 

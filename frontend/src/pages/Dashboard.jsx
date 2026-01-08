@@ -210,13 +210,7 @@ export default function Dashboard() {
 
                         {/* Desktop View */}
                         <div className="hidden md:block space-y-8">
-                            {/* Roots Section (Stable Base) */}
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold flex items-center text-amber-400 border-l-4 border-amber-500 pl-3">
-                                    🥔 根莖市場 (Roots) - <span className="text-sm ml-2 text-amber-300/70 font-normal">💰 穩定配息 (Stable Dividend) • 低波動</span>
-                                </h2>
-                                <StockGrid stocks={roots} watchlist={watchlist} toggleWatchlist={toggleWatchlist} emptyMessage="根莖市場暫無商品..." />
-                            </div>
+                            
 
                             {/* Fruits Section */}
                             <div className="space-y-4">
@@ -226,12 +220,22 @@ export default function Dashboard() {
                                 <StockGrid stocks={fruits} watchlist={watchlist} toggleWatchlist={toggleWatchlist} emptyMessage="水果市場暫無商品..." />
                             </div>
 
+                            
+
                             {/* Meats Section */}
                             <div className="space-y-4">
                                 <h2 className="text-2xl font-bold flex items-center text-rose-400 border-l-4 border-rose-500 pl-3">
                                     🥩 肉類市場 (Meats) - <span className="text-sm ml-2 text-rose-300/70 font-normal">⚠️ 高風險高報酬 (High Volatility)</span>
                                 </h2>
                                 <StockGrid stocks={meats} watchlist={watchlist} toggleWatchlist={toggleWatchlist} emptyMessage="肉類市場籌備中..." />
+                            </div>
+
+                            {/* Roots Section (Stable Base) */}
+                            <div className="space-y-4">
+                                <h2 className="text-2xl font-bold flex items-center text-amber-400 border-l-4 border-amber-500 pl-3">
+                                    🥔 根莖市場 (Roots) - <span className="text-sm ml-2 text-amber-300/70 font-normal">💰 穩定配息 (Stable Dividend) • 低波動</span>
+                                </h2>
+                                <StockGrid stocks={roots} watchlist={watchlist} toggleWatchlist={toggleWatchlist} emptyMessage="根莖市場暫無商品..." />
                             </div>
                         </div>
                     </div>

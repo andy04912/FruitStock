@@ -16,6 +16,7 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
     // Estimate cost
     const cost = stock.price * quantity;
     const canBuy = user.balance >= cost;
+    const isFrozen = user.is_trading_frozen;
 
     const handleTrade = async (type) => { // 'buy' or 'sell'
         if (quantity <= 0) return;
@@ -116,19 +117,20 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     <Button 
                         className="bg-green-600 hover:bg-green-700 w-full" 
                         onClick={() => handleTrade('buy')}
-                        disabled={loading || !canBuy}
+                        disabled={loading || !canBuy || isFrozen}
                     >
                         買入
                     </Button>
                     <Button 
                         className="bg-red-600 hover:bg-red-700 w-full" 
                         onClick={() => handleTrade('sell')}
-                        disabled={loading}
+                        disabled={loading || isFrozen}
                     >
                         賣出
                     </Button>
                 </div>
-                {!canBuy && <div className="text-xs text-red-500 text-center">餘額不足</div>}
+                {!canBuy && !isFrozen && <div className="text-xs text-red-500 text-center">餘額不足</div>}
+                {isFrozen && <div className="text-xs text-red-500 text-center font-bold mt-2">⛔ 交易凍結: {user.frozen_reason || "違約中"}</div>}
             </CardContent>
         </Card>
     );

@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from datetime import timedelta, datetime
-from typing import List
+from typing import List, Optional
+from bank import BankService
+from pydantic import BaseModel
 
 from database import get_session
-from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist
+from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Loan, LaborLog
 from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -77,11 +79,30 @@ def get_portfolio(current_user: User = Depends(get_current_user), session: Sessi
 
 @router.post("/trade/buy")
 def buy_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Strict Freeze Check
+    bank = BankService(session)
+    bank.check_loan_expiry()
+    session.refresh(current_user)
+    
+    if current_user.is_trading_frozen:
+        raise HTTPException(status_code=403, detail=f"Account Frozen: {current_user.frozen_reason}")
+
     trader = Trader(session)
     return trader.buy_stock(current_user, stock_id, quantity)
 
 @router.post("/trade/sell")
 def sell_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Strict Freeze Check
+    bank = BankService(session)
+    bank.check_loan_expiry()
+    session.refresh(current_user)
+    
+    if current_user.is_trading_frozen:
+         # Exception: Allow selling if it's for LIQUIDATION? 
+         # Actually, normal selling is blocked. Liquidation is special endpoint.
+         # So we block this.
+         raise HTTPException(status_code=403, detail=f"Account Frozen: {current_user.frozen_reason}")
+
     trader = Trader(session)
     return trader.sell_stock(current_user, stock_id, quantity)
 
@@ -320,3 +341,95 @@ def remove_watchlist(stock_id: int, current_user: User = Depends(get_current_use
         session.delete(item)
     session.commit()
     return {"message": "Removed from watchlist"}
+
+# --- BANK SYSTEM API ---
+
+class BorrowRequest(BaseModel):
+    amount: float
+
+class RepayRequest(BaseModel):
+    amount: Optional[float] = None
+
+class WorkRequest(BaseModel):
+    type: str  # "NORMAL", "BUDDHA", "BLACK"
+    hours: int # 2-12
+
+class BailRequest(BaseModel):
+    target_user_id: int
+
+@router.get("/bank/status")
+def get_bank_status(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    rates = bank.get_dynamic_rates()
+    
+    # Active Loans
+    loans = session.exec(select(Loan).where(Loan.user_id == current_user.id, Loan.status.in_(["ACTIVE", "DEFAULT"]))).all()
+    total_debt = sum(l.total_due for l in loans)
+    
+    # Active Labor
+    labor = session.exec(select(LaborLog).where(LaborLog.user_id == current_user.id, LaborLog.status == "IN_PROGRESS")).first()
+    labor_info = None
+    if labor:
+        labor_info = {
+            "type": labor.type,
+            "end_time": labor.end_time,
+            "status": labor.status
+        }
+        
+    # Jail Roster (for Bailout)
+    all_jailed = session.exec(select(LaborLog).where(LaborLog.type == "JAIL", LaborLog.status == "IN_PROGRESS")).all()
+    roster = []
+    for log in all_jailed:
+        u = session.get(User, log.user_id)
+        if u and u.id != current_user.id: 
+            # Get debt
+            u_loans = session.exec(select(Loan).where(Loan.user_id == u.id, Loan.status == "DEFAULT")).all()
+            debt = sum(l.total_due for l in u_loans)
+            roster.append({
+                "user_id": u.id,
+                "username": u.username,
+                "debt": debt,
+                "bail_cost": debt * 1.5,
+                "end_time": log.end_time
+            })
+            
+    return {
+        "rates": rates,
+        "loans": loans,
+        "total_debt": total_debt,
+        "labor": labor_info,
+        "jail_roster": roster,
+        "is_frozen": current_user.is_trading_frozen,
+        "frozen_reason": current_user.frozen_reason,
+        "karma": current_user.karma_score
+    }
+
+@router.post("/bank/borrow")
+def borrow_money(req: BorrowRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    return bank.borrow(current_user, req.amount)
+
+@router.post("/bank/repay")
+def repay_money(req: RepayRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    return bank.repay(current_user, req.amount)
+
+@router.post("/bank/liquidate")
+def liquidate_now(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    return bank.liquidate_assets(current_user)
+
+@router.post("/bank/work")
+def start_work(req: WorkRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    return bank.start_labor(current_user, f"WORK_{req.type}", req.hours)
+
+@router.post("/bank/jail")
+def go_to_jail(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    return bank.start_labor(current_user, "JAIL", 0)
+
+@router.post("/bank/bail")
+def bail_out(req: BailRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    bank = BankService(session)
+    return bank.bail_user(current_user, req.target_user_id)

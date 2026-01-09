@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { LineChart, Wallet, LogOut, Newspaper, Trophy, Menu, X } from 'lucide-react'; // Added Trophy
+import { LineChart, Wallet, LogOut, Newspaper, Trophy, Menu, X, Building2 } from 'lucide-react'; // Added Trophy, Building2
 import { Button } from '../ui/components';
 
 export default function Navbar() {
@@ -52,6 +52,7 @@ export default function Navbar() {
     const navLinks = [
         { path: '/', label: '市場綜覽', icon: LineChart, color: 'text-cyan-400' },
         { path: '/portfolio', label: '資產分佈', icon: Wallet, color: 'text-emerald-400' },
+        { path: '/bank', label: '銀行', icon: Building2, color: 'text-red-400' },
         { path: '/news', label: '新聞中心', icon: Newspaper, color: 'text-blue-400' },
         { path: '/leaderboard', label: '排行榜', icon: Trophy, color: 'text-yellow-400' }, // Added
     ];
@@ -108,7 +109,7 @@ export default function Navbar() {
                             onClick={() => setShowDetail(!showDetail)}
                         >
                             <span className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-wider font-bold group-hover:text-primary transition-colors flex items-center gap-1">
-                                <span className="hidden md:inline">Net Worth</span> <span className="md:hidden">財富</span> <span className="text-[10px]">▼</span>
+                                <span className="hidden md:inline">身價</span> <span className="md:hidden">身價</span> <span className="text-[10px]">▼</span>
                             </span>
                             <span className={`font-mono font-bold text-sm md:text-lg ${netWorth > 10000 ? "text-emerald-400 shadow-emerald-400/20" : "text-white"}`}>
                                 ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}

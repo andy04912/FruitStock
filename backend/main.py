@@ -13,6 +13,7 @@ from database import create_db_and_tables, engine, get_session
 from api import router
 from market import MarketEngine
 from events import EventSystem
+from bank import BankService
 from models import Stock, EventLog, Prediction, User, Portfolio, Transaction, Watchlist, Alert, Achievement, BonusLog, Guru
 
 # Redis Config
@@ -82,6 +83,26 @@ async def async_tick_job():
     # Broadcast in async context
     await manager.broadcast(json.dumps(data, default=str))
 
+def run_bank_expiry_check():
+    with Session(engine) as session:
+        bank = BankService(session)
+        bank.check_loan_expiry()
+
+def run_bank_labor_check():
+    with Session(engine) as session:
+        bank = BankService(session)
+        bank.process_labor_completion()
+
+def run_bank_interest():
+    with Session(engine) as session:
+        bank = BankService(session)
+        bank.calculate_interest()
+
+def run_bank_passive_income():
+    with Session(engine) as session:
+        bank = BankService(session)
+        bank.process_passive_income()
+
 async def redis_listener():
     """Background task to subscribe to Redis and push to local clients"""
     if not redis_client: return
@@ -127,6 +148,12 @@ async def lifespan(app: FastAPI):
     
     # Cleanup old news every hour (keep last 24h)
     scheduler.add_job(event_system.cleanup_old_events, 'interval', hours=1, args=[24])
+    
+    # Bank System Schedulers
+    scheduler.add_job(run_bank_expiry_check, 'interval', minutes=1)
+    scheduler.add_job(run_bank_labor_check, 'interval', minutes=1)
+    scheduler.add_job(run_bank_interest, 'interval', hours=2)
+    scheduler.add_job(run_bank_passive_income, 'interval', hours=1)
     
     scheduler.start()
     

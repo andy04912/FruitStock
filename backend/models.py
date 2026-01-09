@@ -17,11 +17,41 @@ class User(SQLModel, table=True):
     balance: float = Field(default=10000.0)
     created_at: datetime = Field(default_factory=datetime.now)
     
+    # Bank System Fields
+    is_trading_frozen: bool = Field(default=False)
+    frozen_reason: Optional[str] = Field(default=None)
+    karma_score: int = Field(default=0) # For "Halo" effect
+
     portfolios: List["Portfolio"] = Relationship(back_populates="user")
     transactions: List["Transaction"] = Relationship(back_populates="user")
     alerts: List["Alert"] = Relationship(back_populates="user")
     achievements: List["Achievement"] = Relationship(back_populates="user")
     watchlists: List["Watchlist"] = Relationship(back_populates="user")
+    loans: List["Loan"] = Relationship(back_populates="user")
+    labor_logs: List["LaborLog"] = Relationship(back_populates="user")
+
+class Loan(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    principal: float       # Original loan amount
+    surcharge: float = Field(default=0.0) # Accumulated interest/fees
+    total_due: float       # principal + surcharge
+    due_date: datetime
+    status: str = Field(default="ACTIVE") # "ACTIVE", "PAID", "DEFAULT"
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    user: User = Relationship(back_populates="loans")
+
+class LaborLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    type: str              # "WORK" or "JAIL"
+    start_time: datetime
+    end_time: datetime     
+    status: str = Field(default="IN_PROGRESS") # "IN_PROGRESS", "COMPLETED"
+    earnings: float = Field(default=0.0)
+    
+    user: User = Relationship(back_populates="labor_logs")
 
 class Stock(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

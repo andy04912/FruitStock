@@ -51,6 +51,11 @@ class MarketEngine:
         self.active_stocks = [] # List of Stock objects (detached or dicts)
         self.history_buffer = [] # List of StockPriceHistory objects to bulk insert
         
+        # New Chaos Elements
+        self.market_regime = "NORMAL" # NORMAL, BOOM, CRASH, CHAOS
+        self.regime_duration = 0
+        self.base_prices = {} # {symbol: price} - Dynamic center of gravity
+        
     def initialize_market(self):
         with self.session_factory() as session:
             # ... (Schema migrations omit for brevity as they run once) ...
@@ -137,6 +142,44 @@ class MarketEngine:
         duration = (datetime.now() - start_time).total_seconds()
         print(f"[Market] Persistence completed in {duration:.2f}s")
 
+    def get_base_price(self, symbol):
+        """Returns dynamic base price for gravity calculation"""
+        if symbol not in self.base_prices:
+             # Find initial
+             for lst in [INITIAL_FRUITS, INITIAL_MEATS, INITIAL_ROOTS]:
+                 for item in lst:
+                     if item["symbol"] == symbol:
+                         self.base_prices[symbol] = item["price"]
+                         return item["price"]
+             # If new IPO, return current if not found?
+             # We should try to find from active stocks
+             for s in self.active_stocks:
+                 if s.symbol == symbol:
+                      self.base_prices[symbol] = s.price
+                      return s.price
+             return 100.0 # Fallback
+        return self.base_prices[symbol]
+
+    def update_regime(self):
+        """Updates global market mood"""
+        self.regime_duration -= 1
+        if self.regime_duration <= 0:
+            # Switch Regime
+            roll = random.random()
+            if roll < 0.7:
+                self.market_regime = "NORMAL"
+                self.regime_duration = random.randint(300, 600) # 5-10 mins
+            elif roll < 0.85:
+                self.market_regime = "BOOM" # Bull Run
+                self.regime_duration = random.randint(60, 180)
+            elif roll < 0.95:
+                self.market_regime = "CRASH" # Bear functionality
+                self.regime_duration = random.randint(60, 120)
+            else:
+                self.market_regime = "CHAOS" # High Volatility
+                self.regime_duration = random.randint(30, 90)
+            print(f"[Market] Regime Switched to: {self.market_regime} (for {self.regime_duration}s)")
+
     def update_prices(self):
         # Operates purely on self.active_stocks (Memory)
         if not self.active_stocks:
@@ -152,9 +195,9 @@ class MarketEngine:
             self.last_date = current_date
             print(f"Day changed to {current_date}. Resetting day_open.")
         
+        self.update_regime()
+
         # We need a session mainly for reading Events/Predictions?
-        # To strictly minimize IO, we should cache events too, but let's assume reading is cheap.
-        # We'll use a session just for read-only queries.
         with self.session_factory() as session:
             
             for stock in self.active_stocks:
@@ -163,18 +206,64 @@ class MarketEngine:
                 if stock.day_open == 0:
                     stock.day_open = stock.price
 
-                # --- VOLATILITY LOGIC ---
+                # --- NEW CHAOS MATH ---
                 category = getattr(stock, 'category', 'FRUIT')
+                base_price = self.get_base_price(stock.symbol)
                 
-                # 1. Base Volatility
-                volatility_multiplier = 1.0
-                if category == 'MEAT':
-                     volatility_multiplier = 1.2
-                elif category == 'ROOT':
-                     volatility_multiplier = 0.3
+                # 1. Base Volatility & Regime Modifiers
+                volatility = stock.volatility if hasattr(stock, 'volatility') else 0.02
                 
-                # 2. Event Impact (Read-Only DB Access)
-                # Keep checking DB for events is simplest for now.
+                # Regime Multipliers
+                regime_bias = 0.0
+                regime_vol_mult = 1.0
+                
+                if self.market_regime == "BOOM":
+                    regime_bias = 0.0005 # Slight drift up
+                    regime_vol_mult = 1.5
+                elif self.market_regime == "CRASH":
+                    regime_bias = -0.001 # Stronger drift down
+                    regime_vol_mult = 2.0
+                elif self.market_regime == "CHAOS":
+                    regime_vol_mult = 4.0 # Pure volatility, no bias
+                
+                # Category Modifiers
+                if category == 'MEAT': regime_vol_mult *= 1.2
+                if category == 'ROOT': regime_vol_mult *= 0.3 # Roots are stable
+                
+                # 2. Random Walk (Brownian Motion)
+                # Box-Muller transform usually, but random.gauss is fine.
+                # Standard Deviation = volatility / sqrt(time updates per day?) -> simplified here
+                noise = random.gauss(regime_bias, 0.001 * regime_vol_mult)
+                
+                # 3. Dynamic Gravity (Mean Reversion)
+                # Instead of fixed pull, we move the base_price towards current price slowly (Drift)
+                # And pull current price towards base_price weakly.
+                
+                # Drift the Base (Center of Gravity moves!)
+                # If price stays high, base price follows it slowly.
+                if self.market_regime == "NORMAL":
+                     target_bias = (stock.price - base_price) * 0.0001
+                     self.base_prices[stock.symbol] += target_bias
+                
+                # Gravity Force (Non-linear)
+                # Only pull if deviation is huge > 20%
+                deviation = (stock.price - base_price) / base_price
+                gravity = 0.0
+                
+                if abs(deviation) > 0.2:
+                    # Pull back
+                    gravity = -deviation * 0.005 # Stronger pull at extremes
+                elif abs(deviation) > 0.5:
+                     gravity = -deviation * 0.01 # Very strong pull to prevent explosion
+                
+                if category == 'ROOT':
+                    # Roots hug the line tighter for dividends
+                    gravity = -deviation * 0.02
+
+                # 4. Event Impact (Read-Only)
+                # Reducing frequency of DB checks to optimize (check 1/10 times or just simple cache?)
+                # For safety, we keep checking but maybe simpler query?
+                # Keeping original logic for compatibility but tuning down effect
                 statement = select(EventLog).where(
                     EventLog.target_stock_id == stock.id,
                     EventLog.created_at >= now - timedelta(seconds=60)
@@ -182,24 +271,20 @@ class MarketEngine:
                 active_events = session.exec(statement).all()
                 total_impact = sum(e.impact_multiplier for e in active_events)
                 
-                if category == 'ROOT':
-                    total_impact *= 0.5 
-
-                if abs(total_impact) > 0.15:
-                    volatility_multiplier *= 3.0 
-                elif abs(total_impact) > 0.05:
-                    volatility_multiplier *= 1.5 
+                trend_force = (total_impact / 60.0) # Spread impact over minute
                 
-                # Random Noise
-                noise = random.gauss(0, 0.0005 * volatility_multiplier)
-                
-                # 3. Directional Force
-                trend_force = (total_impact / 45.0) 
+                # 5. Guru/Sniper (Simplified Probability)
+                sniper_effect = 0
+                if random.random() < 0.0002: # 0.02%
+                     sniper_effect = random.choice([0.02, -0.02, 0.01, -0.01])
+                     print(f"[Market] Sniper hit {stock.name}: {sniper_effect*100}%")
 
-                # APPLY PRICE CHANGE
-                change_percent = noise + trend_force
+                # FINAL CALCULATION
+                change_percent = noise + gravity + trend_force + sniper_effect
+                
+                # Apply
                 stock.price *= (1 + change_percent)
-                stock.price = max(0.01, round(stock.price, 2)) # Prevent negative prices 
+                stock.price = max(0.01, round(stock.price, 2)) 
 
                 # B. Generate New Prediction (Rarely)
                 if random.random() < 0.0005:

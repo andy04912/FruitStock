@@ -18,7 +18,7 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
     const canBuy = user.balance >= cost;
 
     const handleTrade = async (type) => { // 'buy' or 'sell'
-        if (quantity <= 0) return;
+        if (quantity <= 0 || loading) return;
         setLoading(true);
         try {
             const res = await axios.post(`${API_URL}/trade/${type}?stock_id=${stock.id}&quantity=${quantity}`);
@@ -148,7 +148,54 @@ export default function StockDetailPage() {
     const [fitTrigger, setFitTrigger] = useState(0);
     const [news, setNews] = useState([]);
     const [predictions, setPredictions] = useState([]);
+    const [loadingMore, setLoadingMore] = useState(false);
     const lastEventRef = React.useRef(null);
+    const hasMoreHistory = React.useRef(true);
+
+    const handleLoadMore = async () => {
+        if (loadingMore || !history.length || !hasMoreHistory.current) return;
+        
+        setLoadingMore(true);
+        try {
+            const oldestTime = history[0].time;
+            // API expects unix timestamp for 'before'
+            const res = await axios.get(`${API_URL}/stocks/${id}/history`, { 
+                params: { 
+                    interval, 
+                    limit: 5000, 
+                    before: oldestTime 
+                } 
+            });
+            
+            if (res.data.length > 0) {
+                // Prepend data using functional update to avoid race conditions
+                setHistory(prev => {
+                    if (prev.length === 0) return res.data;
+                    
+                    const internalOldest = prev[0].time;
+                    // Strict filtering to prevent overlap/order issues
+                    // This protects against backend returning overlapping data or latest data by mistake
+                    const validNewCandles = res.data.filter(d => d.time < internalOldest);
+                    
+                    if (validNewCandles.length === 0) {
+                        // If we got data but all of it was filtered out, it means we reached the end or backend returned wrong range
+                         return prev;
+                    }
+                    
+                    // console.log(`Prepending ${validNewCandles.length} candles. End: ${validNewCandles[validNewCandles.length-1].time}, Start: ${internalOldest}`);
+                    return [...validNewCandles, ...prev];
+                });
+                toast.success(`載入 ${res.data.length} 筆歷史資料`);
+            } else {
+                hasMoreHistory.current = false;
+                toast.info("已載入所有歷史資料");
+            }
+        } catch (e) {
+            console.error("Load more failed", e);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     // 1. Sync Price from Socket (Real-time)
     useEffect(() => {
@@ -255,18 +302,10 @@ export default function StockDetailPage() {
 
     if (!stock) return <div className="p-8 font-mono text-primary animate-pulse">正在載入股價資訊...</div>;
 
-    // Filter data based on View Mode
-    const getChartData = () => {
-        if (viewMode === "history") return history;
-        
-        // Filter for Today (00:00 to now)
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-        const startOfDay = Math.floor(now.getTime() / 1000);
-        return history.filter(d => d.time >= startOfDay);
-    };
-
-    const chartData = getChartData();
+    // Filter data logic removed: We pass FULL history to chart,
+    // and let the chart handle "Today" view via setVisibleRange.
+    // This allows user to scroll back ("往左滑") to see previous data.
+    const chartData = history;
 
     return (
         <div className="container mx-auto p-4 max-w-screen-xl">
@@ -346,7 +385,12 @@ export default function StockDetailPage() {
                             )}
 
                             <div>
-                                <CandlestickChart data={chartData} fitTrigger={fitTrigger} />
+                                <CandlestickChart 
+                                    data={chartData} 
+                                    fitTrigger={fitTrigger} 
+                                    viewMode={viewMode}
+                                    onLoadMore={handleLoadMore} 
+                                />
                             </div>
                         </CardContent>
                     </Card>

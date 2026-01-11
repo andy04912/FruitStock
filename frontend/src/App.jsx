@@ -11,6 +11,7 @@ import StockDetailPage from "./pages/StockDetailPage";
 import PortfolioPage from "./pages/PortfolioPage";
 import NewsPage from "./pages/NewsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
+import RacePage from "./pages/RacePage";
 
 import NewsTicker from "./components/common/NewsTicker";
 
@@ -47,6 +48,10 @@ function AppContent() {
                         <Route 
                             path="/leaderboard" 
                             element={<PrivateRoute><LeaderboardPage /></PrivateRoute>} 
+                        />
+                        <Route 
+                            path="/race" 
+                            element={<PrivateRoute><RacePage /></PrivateRoute>} 
                         />
                     </Routes>
                 </div>

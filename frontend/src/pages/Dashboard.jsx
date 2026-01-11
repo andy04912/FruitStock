@@ -103,13 +103,13 @@ const StockGrid = ({ stocks, watchlist, toggleWatchlist, emptyMessage }) => {
 
 export default function Dashboard() {
     const { marketData, isConnected } = useSocket();
-    const { API_URL } = useAuth();
+    const { API_URL, token } = useAuth();
     
     const [watchlist, setWatchlist] = useState([]);
     const [activeTab, setActiveTab] = useState("FRUIT");
 
     useEffect(() => {
-        if (!API_URL) return;
+        if (!API_URL || !token) return; // Wait for token to be available
         const fetchWatchlist = async () => {
              try {
                  const res = await axios.get(`${API_URL}/watchlist`);
@@ -119,7 +119,7 @@ export default function Dashboard() {
              } catch (e) { console.error(e) }
         };
         fetchWatchlist();
-    }, [API_URL]);
+    }, [API_URL, token]);
 
     const toggleWatchlist = async (stockId) => {
         try {

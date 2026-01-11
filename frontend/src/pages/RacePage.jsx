@@ -1,0 +1,467 @@
+import React, { useEffect, useState, useRef } from "react";
+import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, Badge } from "../components/ui/components";
+import { toast } from "sonner";
+import { Timer, Trophy, DollarSign, History } from "lucide-react";
+import { sounds } from "../utils/sound";
+
+export default function RacePage() {
+    const { user, API_URL, refreshUser } = useAuth();
+    const [race, setRace] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [betAmount, setBetAmount] = useState(100);
+    const [selectedHorse, setSelectedHorse] = useState(null);
+    const [betting, setBetting] = useState(false);
+    const [history, setHistory] = useState([]);
+    
+    // Animation State
+    const [positions, setPositions] = useState({}); // { horse_id: percentage }
+    const requestRef = useRef();
+    
+    // Polling Race Info
+    useEffect(() => {
+        const fetchRace = async () => {
+            try {
+                const res = await axios.get(`${API_URL}/race/next`);
+                if (res.data.status !== "NO_RACE") {
+                    setRace(prev => {
+                        // Detect transition to FINISHED to refresh user balance
+                        if (prev && prev.status !== "FINISHED" && res.data.status === "FINISHED") {
+                            refreshUser(); // Sync balance
+                            toast.success("比賽結束！請查看下注結果 🏆");
+                            
+                            // Play sound if won
+                            if (prev.winner_id && prev.winner_id === res.data.winner_id) {
+                                // Logic handled in backend response usually but here we can check if user bet on winner
+                                const myWin = res.data.user_bets.some(b => b.horse_id === res.data.winner_id);
+                                if (myWin) sounds.playBuy();
+                            }
+                        }
+                        return res.data;
+                    });
+                }
+            } catch (e) {
+                console.error("Race fetch error", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        const fetchHistory = async () => {
+             try {
+                const res = await axios.get(`${API_URL}/race/history`);
+                setHistory(res.data);
+            } catch (e) {}
+        };
+        
+        fetchRace();
+        fetchHistory();
+        
+        const interval = setInterval(fetchRace, 2000); // 2s polling
+        return () => clearInterval(interval);
+    }, [API_URL]);
+
+    const handleBet = async () => {
+        if (!selectedHorse || betAmount <= 0) return;
+        setBetting(true);
+        try {
+            const res = await axios.post(`${API_URL}/race/bet`, {
+                race_id: race.id,
+                horse_id: selectedHorse,
+                amount: betAmount
+            });
+            
+            if (res.data.status === 'success') {
+                toast.success("下注成功！祝你好運！");
+                sounds.playBuy();
+                refreshUser();
+                setRace(prev => ({
+                    ...prev,
+                    user_bets: [...prev.user_bets, { 
+                        horse_id: selectedHorse, 
+                        amount: betAmount, 
+                        odds: race.participants.find(p => p.horse_id === selectedHorse)?.odds 
+                    }]
+                }));
+            } else {
+                toast.error(res.data.message);
+                sounds.playError();
+            }
+        } catch (e) {
+            toast.error("下注失敗");
+            sounds.playError();
+        } finally {
+            setBetting(false);
+        }
+    };
+
+    // Calculate Countdown
+    const getCountdown = () => {
+        if (!race) return "Loading...";
+        const start = new Date(race.start_time).getTime();
+        const now = new Date().getTime(); 
+        const diff = Math.max(0, Math.floor((start - now) / 1000));
+        
+        const m = Math.floor(diff / 60);
+        const s = diff % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    // --- ANIMATION LOOP ---
+    const animate = () => {
+        if (!race || race.status !== "RUNNING" || !race.start_time) {
+            // If finished, set final positions
+            if (race?.status === "FINISHED" && race.winner_id) {
+                const finalPos = {};
+                race.participants.forEach(p => {
+                     // Use deterministic position based on ID to avoid jittering every frame
+                     // 70% + (id % 20)% -> range 70-90%
+                     finalPos[p.horse_id] = p.horse_id === race.winner_id ? 100 : 70 + (p.horse_id * 7 % 20);
+                });
+                setPositions(finalPos);
+            }
+            requestRef.current = requestAnimationFrame(animate);
+            return;
+        }
+
+        const now = Date.now();
+        const start = new Date(race.start_time).getTime();
+        const duration = 30 * 1000; // 30 seconds race
+        const elapsed = now - start;
+        const progress = Math.min(1, Math.max(0, elapsed / duration));
+
+        const newPositions = {};
+        
+        race.participants.forEach((p, idx) => {
+             // Seed random based on horse_id for consistency across renders if needed, 
+             // but here we just want cool visual.
+             // We know the winner: race.winner_id (Available in RUNNING now)
+             const isWinner = p.horse_id === race.winner_id;
+             
+             // Organic movement using easing
+             // Simple EaseOut formulation for natural start-fast-end-slow feel
+             const easedProgress = 1 - Math.pow(1 - progress, 1.5); 
+             
+             let pos = easedProgress * 85; 
+             
+             // Multi-layer organic noise (Simulate jockey movement & stamina variance)
+             // Low freq + High freq waves
+             const noise = (Math.sin(elapsed * 0.002 + idx * 10) * 0.4) + 
+                           (Math.cos(elapsed * 0.005 + idx * 20) * 0.2);
+
+             if (isWinner) {
+                 // Winner Logic: 
+                 // Stays in pack until 60%, then smoothly accelerates past others
+                 if (progress > 0.6) {
+                     // Quadratic boost for smooth overtake
+                     const boostPhase = (progress - 0.6) / 0.4; // 0 to 1
+                     const boost = boostPhase * boostPhase * 25; 
+                     pos += boost;
+                 }
+                 pos += noise * 0.5; // Winner is more stable
+             } else {
+                 // Loser Logic:
+                 pos += noise;
+                 
+                 // Fatigue/Giving up effect at the very end
+                 if (progress > 0.85) {
+                      pos -= (progress - 0.85) * 5; 
+                 }
+                 
+                 // Cap losers
+                 pos = Math.min(92, pos); 
+             }
+             
+             // Clamp 0-105 (Winner goes off screen)
+             newPositions[p.horse_id] = Math.max(5, pos);
+        });
+
+        setPositions(newPositions);
+        requestRef.current = requestAnimationFrame(animate);
+    };
+
+    useEffect(() => {
+        requestRef.current = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(requestRef.current);
+    }, [race]);
+
+
+    if (loading && !race) return <div className="p-8 text-center animate-pulse">正在前往馬場...</div>;
+
+    const isBettingOpen = race?.status === "OPEN";
+    const isRunning = race?.status === "RUNNING";
+    const isFinished = race?.status === "FINISHED";
+
+    return (
+        <div className="container mx-auto p-4 max-w-screen-xl">
+             <div className="flex flex-col gap-6">
+                {/* Header */}
+                <Card className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-yellow-500/20">
+                    <CardHeader>
+                        <CardTitle className="flex justify-between items-center text-yellow-500">
+                            <div className="flex items-center gap-2">
+                                <Trophy className="h-6 w-6" />
+                                <span>皇家賽馬場 (Royal Racecourse)</span>
+                            </div>
+                            <div className="flex items-center gap-4 bg-black/30 px-4 py-2 rounded-full border border-yellow-500/30">
+                                <span className={isBettingOpen ? "text-green-400 animate-pulse" : "text-red-400"}>
+                                    {isBettingOpen ? "開放下注中" : isRunning ? "比賽進行中" : isFinished ? "比賽結束" : "準備中"}
+                                </span>
+                                {isBettingOpen && (
+                                    <span className="font-mono text-xl text-white">
+                                        ⏱ {getCountdown()}
+                                    </span>
+                                )}
+                            </div>
+                        </CardTitle>
+                    </CardHeader>
+                </Card>
+
+                <div className="flex flex-col lg:flex-row gap-6">
+                    {/* Left: Track & Horses */}
+                    <div className="flex-1 space-y-6">
+                        {/* Race Track Animation Area */}
+                        {(isRunning || isFinished) && (
+                             <Card className="overflow-hidden bg-slate-950 border-green-500/30 relative h-[400px]">
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/dirt.png')] opacity-20"></div>
+                                {/* Track Lines */}
+                                <div className="absolute inset-0 flex flex-col justify-around py-4">
+                                    {race.participants.map((p, idx) => (
+                                        <div key={p.horse_id} className="relative h-8 border-b border-white/5 mx-4 group">
+                                             {/* Lane Number */}
+                                             <div className="absolute left-[-10px] top-1 text-[10px] text-white/30 font-mono">{idx + 1}</div>
+                                             
+                                             {/* Horse Avatar Moving */}
+                                             <div 
+                                                className="absolute top-[-24px] flex flex-col items-center z-10"
+                                                style={{ 
+                                                    left: `${positions[p.horse_id] || 5}%`, 
+                                                    // No transition here because we are using requestAnimationFrame for smooth 60fps
+                                                }}
+                                             >
+                                                {/* Tooltip / Name */}
+                                                <div className="mb-1 pointer-events-none opacity-80 whitespace-nowrap">
+                                                    <span className="text-[10px] bg-black/60 px-1.5 py-0.5 rounded text-white font-bold border border-white/10 shadow-sm">
+                                                        {p.name}
+                                                    </span>
+                                                </div>
+
+                                                {/* Horse Icon */}
+                                                <div className="transform scale-x-[-1] text-3xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                                                    🐎
+                                                </div>
+                                                
+                                                {/* Dust Effect (Simple Dot) for Leader */}
+                                                {race.winner_id === p.horse_id && isRunning && (
+                                                    <div className="absolute bottom-0 right-0 w-2 h-2 bg-yellow-500/50 rounded-full blur-sm animate-ping" />
+                                                )}
+                                             </div>
+                                        </div>
+                                    ))}
+                                    {/* Finish Line */}
+                                    <div className="absolute right-[5%] top-0 bottom-0 w-2 bg-white/10 border-x border-dashed border-red-500/50 flex flex-col items-center justify-center">
+                                        <div className="h-full w-px bg-red-500/50"></div>
+                                        <div className="absolute top-2 text-[10px] text-red-500 font-bold tracking-widest uppercase writing-mode-vertical">Finish</div>
+                                    </div>
+                                </div>
+                                
+                                {isRunning && (
+                                    <div className="absolute top-4 right-4 bg-red-600/90 text-white px-3 py-1 rounded animate-pulse font-bold text-sm tracking-wider shadow-lg">
+                                        🔴 LIVE
+                                    </div>
+                                )}
+                             </Card>
+                        )}
+                        
+                        {isFinished && race.winner_id && (
+                             <Card className="bg-gradient-to-br from-yellow-900/40 to-black border-yellow-500/50 animate-in zoom-in-95 duration-500">
+                                <CardContent className="flex flex-col items-center justify-center py-10 text-center space-y-4">
+                                    <div className="relative">
+                                        <div className="absolute inset-0 bg-yellow-500/20 blur-xl rounded-full animate-pulse" />
+                                        <Trophy className="h-20 w-20 text-yellow-400 relative z-10 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]" />
+                                    </div>
+                                    
+                                    <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 drop-shadow-sm">
+                                        {race.participants.find(p => p.horse_id === race.winner_id)?.name}
+                                    </h2>
+                                    
+                                    {race.winner_announcement && (
+                                        <div className="bg-yellow-950/40 p-6 rounded-xl border border-yellow-500/20 max-w-lg mx-auto backdrop-blur-sm">
+                                            <p className="text-yellow-100 text-base leading-relaxed font-medium">
+                                                {race.winner_announcement}
+                                            </p>
+                                        </div>
+                                    )}
+                                </CardContent>
+                             </Card>
+                        )}
+
+                        {/* Participants List (Betting Table) */}
+                        <Card>
+                             <CardHeader>
+                                <CardTitle>參賽馬匹一覽</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {race?.participants?.map((horse) => {
+                                        const isSelected = selectedHorse === horse.horse_id;
+                                        const myBets = race.user_bets?.filter(b => b.horse_id === horse.horse_id);
+                                        const totalBet = myBets?.reduce((sum, b) => sum + b.amount, 0) || 0;
+                                        
+                                        return (
+                                            <div 
+                                                key={horse.horse_id}
+                                                className={`p-3 border rounded-lg cursor-pointer transition-all hover:bg-slate-800/50 ${isSelected ? 'border-yellow-500 bg-yellow-900/10 ring-1 ring-yellow-500/50' : 'border-slate-700'}`}
+                                                onClick={() => isBettingOpen && setSelectedHorse(horse.horse_id)}
+                                            >
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant="outline" className="h-6 w-6 flex items-center justify-center rounded-full p-0 bg-slate-800 text-xs font-mono text-slate-400">
+                                                            {horse.lane}
+                                                        </Badge>
+                                                        <span className="font-bold text-sm truncate max-w-[80px] text-ellipsis text-slate-200" title={horse.name}>{horse.name}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-xl font-mono text-yellow-400 font-bold">x{horse.odds}</div>
+                                                        <div className="text-xs text-slate-500">賠率</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                 <div className="space-y-1 mt-1">
+                                                    <div className="flex justify-between text-xs text-slate-400">
+                                                        <span>綜合素質</span>
+                                                        <span className="font-mono text-slate-500">{Math.round(horse.score)}</span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full rounded-full ${isSelected ? "bg-yellow-500" : "bg-blue-500"}`} 
+                                                            style={{ width: `${Math.min(100, horse.score / 2.5)}%` }} 
+                                                        ></div>
+                                                    </div>
+                                                 </div>
+
+                                                 {totalBet > 0 && (
+                                                     <div className="mt-2 bg-green-900/20 text-green-400 px-2 py-1 rounded text-[10px] flex items-center justify-center gap-1 border border-green-500/20 font-bold">
+                                                         <DollarSign className="w-3 h-3" />
+                                                         已下注: ${totalBet}
+                                                     </div>
+                                                 )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Right Panel: Betting Slip & History */}
+                    <div className="w-full lg:w-[350px] space-y-6">
+                        {/* Betting Control */}
+                        <Card className={`border-l-4 ${isBettingOpen ? 'border-l-green-500' : 'border-l-red-500'}`}>
+                            <CardHeader>
+                                <CardTitle className="text-lg">下注單 (Betting Slip)</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="flex justify-between text-sm">
+                                    <span>錢包餘額</span>
+                                    <span className="font-bold text-emerald-400 font-mono text-base">${user?.balance?.toFixed(2)}</span>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    <label className="text-sm text-slate-400">選擇馬匹</label>
+                                    <div className="p-3 bg-slate-900 rounded border border-slate-700 min-h-[44px] flex items-center shadow-inner">
+                                        {selectedHorse ? (
+                                            <span className="font-bold text-yellow-500 flex items-center gap-2">
+                                                <span className="text-xl">🐎</span>
+                                                {race?.participants.find(p => p.horse_id === selectedHorse)?.name}
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-600 italic text-sm">請從左側點選要下注的馬匹...</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm text-slate-400">下注金額</label>
+                                    <div className="flex gap-2">
+                                        {[100, 500, 1000].map(amt => (
+                                            <Button 
+                                                key={amt} 
+                                                variant="outline" 
+                                                size="sm"
+                                                onClick={() => setBetAmount(amt)}
+                                                className={`flex-1 transition-all ${betAmount === amt ? "border-yellow-500 text-yellow-500 bg-yellow-500/10" : "hover:border-slate-500"}`}
+                                            >
+                                                ${amt}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                    <div className="relative">
+                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
+                                         <Input 
+                                            type="number" 
+                                            value={betAmount}
+                                            onChange={(e) => setBetAmount(parseInt(e.target.value) || 0)}
+                                            className="font-mono text-lg pl-6"
+                                        />
+                                    </div>
+                                </div>
+
+                                <Button 
+                                    className={`w-full font-bold h-12 text-md shadow-lg transition-all ${isBettingOpen ? "bg-yellow-500 hover:bg-yellow-400 text-black hover:scale-[1.02]" : "bg-slate-700 text-slate-400"}`}
+                                    disabled={!isBettingOpen || !selectedHorse || betting || betAmount > user.balance}
+                                    onClick={handleBet}
+                                >
+                                    {isBettingOpen ? "確認下注" : "暫停下注"}
+                                </Button>
+                                
+                                {!isBettingOpen && race && (
+                                    <div className="bg-slate-900/50 p-2 rounded text-center">
+                                        <p className="text-xs text-red-400">
+                                            {isRunning ? "🏁 比賽進行中，下注已截止" : "🛑 已封盤 / 等待下一場"}
+                                        </p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Recent History */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-lg flex items-center">
+                                    <History className="mr-2 h-4 w-4" />
+                                    下注紀錄
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                    {history.slice(0, 10).map(h => ( // Show last 10
+                                        <div key={h.id} className="text-sm border-b border-white/5 last:border-0 pb-2 hover:bg-white/5 p-2 rounded transition-colors">
+                                             <div className="flex justify-between items-center mb-1">
+                                                 <span className="text-xs text-slate-500 font-mono">{new Date(h.created_at).toLocaleTimeString()}</span>
+                                                 <Badge variant={h.result === 'WON' ? 'default' : h.result === 'LOST' ? 'destructive' : 'secondary'} className="h-5 px-1.5 text-[10px]">
+                                                     {h.result === 'WON' ? '獲勝' : h.result === 'LOST' ? '未中' : '進行中'}
+                                                 </Badge>
+                                             </div>
+                                             <div className="flex justify-between items-center">
+                                                 <span className="font-bold">{h.horse_name}</span>
+                                                 <span className="font-mono text-slate-300 bg-slate-800 px-1.5 rounded text-xs py-0.5">${h.amount}</span>
+                                             </div>
+                                             {h.result === 'WON' && (
+                                                 <div className="text-right text-green-400 text-xs font-bold mt-1">
+                                                     +${h.payout}
+                                                 </div>
+                                             )}
+                                        </div>
+                                    ))}
+                                    {history.length === 0 && <div className="text-center text-slate-500 py-4">無紀錄</div>}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+             </div>
+        </div>
+    );
+}

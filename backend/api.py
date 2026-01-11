@@ -3,9 +3,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from datetime import timedelta, datetime
 from typing import List
+import json
+import random
 
 from database import get_session
-from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist
+from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet
 from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -136,7 +138,20 @@ def get_leaderboard(session: Session = Depends(get_session)):
     return leaderboard[:10]
 
 @router.get("/stocks")
-def get_stocks(session: Session = Depends(get_session)):
+@router.get("/stocks")
+async def get_stocks(session: Session = Depends(get_session)):
+    # Try Redis first (Real-time state)
+    from redis_utils import get_redis
+    redis = await get_redis()
+    if redis:
+        try:
+            cached = await redis.get("market_stocks")
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+            
+    # Fallback to DB (might be 60s old)
     return session.exec(select(Stock)).all()
 
 def resample_candles(candles: List[StockPriceHistory], interval_minutes: int) -> List[dict]:
@@ -213,16 +228,26 @@ def resample_candles(candles: List[StockPriceHistory], interval_minutes: int) ->
     return resampled
 
 @router.get("/stocks/{stock_id}/history")
-def get_stock_history(stock_id: int, interval: str = "1m", session: Session = Depends(get_session)):
+def get_stock_history(stock_id: int, interval: str = "1m", limit: int = 5000, before: int = None, session: Session = Depends(get_session)):
     # interval: 1m, 5m, 15m, 1h, 1d
+    # before: unix timestamp (optional) for pagination
     
     # Determine how much data to fetch
-    # For now, fetch ALL history and resample in memory (Inefficient for prod, OK for sim)
-    statement = select(StockPriceHistory).where(
-        StockPriceHistory.stock_id == stock_id
-    ).order_by(StockPriceHistory.timestamp.asc()) # Get all ascending
+    # Limit to last N records (Optimized for speed)
+    query = select(StockPriceHistory).where(StockPriceHistory.stock_id == stock_id)
     
+    if before:
+        # Client sends unix timestamp which INCLUDES the +28800 offset we added for display.
+        # We must subtract it to match the DB's Naive timestamp (which acts as UTC locally).
+        adjusted_before = before - 28800
+        before_dt = datetime.fromtimestamp(adjusted_before)
+        query = query.where(StockPriceHistory.timestamp < before_dt)
+        
+    statement = query.order_by(StockPriceHistory.timestamp.desc()).limit(limit) 
+    
+    # Fetch descending (latest first), then reverse for processing
     raw_history = session.exec(statement).all()
+    raw_history = list(reversed(raw_history))
     
     if not raw_history:
         return []
@@ -252,7 +277,7 @@ def get_stock_history(stock_id: int, interval: str = "1m", session: Session = De
     # Lightweight charts expects seconds timestamp
     return [
         {
-            "time": int(d["time"].timestamp()) + 28800,
+            "time": int(d["time"].timestamp()) + 28800, # Shift for Visual Display (UTC axis -> Local Time)
             "open": d["open"],
             "high": d["high"],
             "low": d["low"],
@@ -284,8 +309,8 @@ def get_transactions(current_user: User = Depends(get_current_user), session: Se
             "price": txn.price,
             "quantity": txn.quantity,
             "profit": txn.profit,
-            "timestamp": txn.timestamp,  # Local Time (UTC+8) from db
-            "total": txn.price * txn.quantity
+            "timestamp": txn.timestamp,  # Local Time (Naive) - Browser interprets as Local
+            "total": txn.profit if txn.type == "dividend" else txn.price * txn.quantity
         })
     return history
 
@@ -316,7 +341,200 @@ def remove_watchlist(stock_id: int, current_user: User = Depends(get_current_use
         Watchlist.stock_id == stock_id
     )
     results = session.exec(statement).all()
-    for item in results:
-        session.delete(item)
     session.commit()
     return {"message": "Removed from watchlist"}
+
+# --- Race Betting Endpoints ---
+
+@router.get("/race/next")
+@router.get("/race/next")
+def get_next_race(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Strategy:
+    # 1. Look for a recently finished race (e.g. started within last 3 minutes) to show results
+    # 2. Else return the next scheduled/open race
+    
+    # Get last 2 races ordered by start time descending
+    # Usually: [New Upcoming Race, Just Finished Race]
+    statement = select(Race).order_by(Race.start_time.desc()).limit(2)
+    races = session.exec(statement).all()
+    
+    target_race = None
+    
+    if not races:
+        return {"status": "NO_RACE", "message": "No race scheduled"}
+        
+    # Check if we should show a finished race
+    # Logic: If a race finished recently (e.g., < 2 minutes ago), show "FINISHED" state.
+    # Note: RaceEngine starts race at start_time, runs for ~30s. 
+    # So if we want to show results for 60s after start (30s after finish):
+    # We check if start_time > now - 60s.
+    
+    now = datetime.now()
+    cutoff_time = now - timedelta(minutes=1)
+    
+    # Try to find a recent finished race in the last 2 records
+    for r in races:
+        if r.status == "FINISHED" and r.start_time > cutoff_time:
+            target_race = r
+            break
+            
+    # If no recent finished race, fallback to active race
+    if not target_race:
+        # Find first non-finished race (SCHEDULED, OPEN, RUNNING)
+        # We can just query again or filter memory
+        active_races = [r for r in races if r.status != "FINISHED"]
+        if active_races:
+            target_race = active_races[0] # The latest one usually
+        else:
+            # Maybe query explicitly for next active if not in top 2?
+            # Unlikely if loop is consistent, but to be safe:
+            fallback = session.exec(
+                select(Race).where(
+                    Race.status.in_(["SCHEDULED", "OPEN", "CLOSED", "RUNNING"])
+                ).order_by(Race.start_time.asc())
+            ).first()
+            target_race = fallback
+
+    if not target_race:
+         return {"status": "NO_RACE", "message": "No race scheduled"}
+
+    race = target_race
+        
+    participants = []
+    if race.participants_snapshot:
+        try:
+            participants = json.loads(race.participants_snapshot)
+        except:
+            pass
+            
+    # Check if user has bet on this race
+    user_bets = session.exec(select(Bet).where(
+        Bet.user_id == current_user.id,
+        Bet.race_id == race.id
+    )).all()
+    
+    # Generate Winner Announcement if finished
+    winner_announcement = ""
+    if race.status == "FINISHED" and race.winner_horse_id:
+        # Fetch winning bets for this race
+        winning_bets = session.exec(select(Bet).where(
+            Bet.race_id == race.id,
+            Bet.horse_id == race.winner_horse_id
+        )).all()
+        
+        winner_names = []
+        for wb in winning_bets:
+             u = session.get(User, wb.user_id)
+             if u: winner_names.append(u.username)
+        
+        # Max length logic (approx 30 chars of names)
+        # Randomize order
+        random.shuffle(winner_names)
+        
+        final_names = []
+        current_len = 0
+        displayed_count = 0
+        
+        for name in winner_names:
+            if current_len + len(name) > 30:
+                break
+            final_names.append(name)
+            current_len += len(name) + 2 
+            displayed_count += 1
+            
+        if final_names:
+            winner_announcement = "恭喜 " + ", ".join(final_names)
+            remaining = len(winner_names) - displayed_count
+            if remaining > 0:
+                winner_announcement += f" 以及其他 {remaining} 位贏家"
+            winner_announcement += " 獲勝！"
+        elif not winner_names:
+            winner_announcement = "本場無人中獎，下次好運！"
+
+    return {
+        "id": race.id,
+        "start_time": race.start_time,
+        "status": race.status,
+        "participants": participants,
+        "winner_id": race.winner_horse_id,
+        "winner_announcement": winner_announcement,
+        "user_bets": [b.model_dump() for b in user_bets]
+    }
+
+@router.post("/race/bet")
+def place_bet(bet_data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # bet_data: { "race_id": int, "horse_id": int, "amount": float, "odds": float }
+    # Odds are passed from frontend snapshot, but we should verify ideally. For sim, trust frontend/snapshot match.
+    
+    race_id = bet_data.get("race_id")
+    horse_id = bet_data.get("horse_id")
+    amount = float(bet_data.get("amount", 0))
+    
+    if amount <= 0:
+        return {"status": "error", "message": "Invalid amount"}
+        
+    race = session.get(Race, race_id)
+    if not race:
+        return {"status": "error", "message": "Race not found"}
+        
+    if race.status != "OPEN":
+        return {"status": "error", "message": "Betting is closed for this race"}
+        
+    if current_user.balance < amount:
+        return {"status": "error", "message": "Insufficient funds"}
+        
+    # Get odds from snapshot to be safe
+    participants = json.loads(race.participants_snapshot)
+    target_odds = 1.0
+    found = False
+    for p in participants:
+        if p["horse_id"] == horse_id:
+            target_odds = p["odds"]
+            found = True
+            break
+            
+    if not found:
+        return {"status": "error", "message": "Horse not found in this race"}
+        
+    # Deduct Balance
+    current_user.balance -= amount
+    
+    # Create Bet
+    bet = Bet(
+        user_id=current_user.id,
+        race_id=race.id,
+        horse_id=horse_id,
+        amount=amount,
+        odds=target_odds
+    )
+    
+    session.add(current_user)
+    session.add(bet)
+    session.commit()
+    
+    return {"status": "success", "message": "Bet placed successfully", "new_balance": current_user.balance, "bet_id": bet.id}
+
+@router.get("/race/history")
+def get_bet_history(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Get last 20 bets
+    bets = session.exec(select(Bet).where(Bet.user_id == current_user.id).order_by(Bet.created_at.desc()).limit(20)).all()
+    
+    # Enrich with Horse Name? 
+    # Front end can just show ID or we can fetch names if needed.
+    # For now return raw bets, maybe join Horse if crucial.
+    
+    results = []
+    for bet in bets:
+        horse = session.get(Horse, bet.horse_id)
+        horse_name = horse.name if horse else "Unknown"
+        results.append({
+            "id": bet.id,
+            "race_id": bet.race_id,
+            "horse_name": horse_name,
+            "amount": bet.amount,
+            "odds": bet.odds,
+            "result": bet.result, # PENDING, WON, LOST
+            "payout": bet.payout,
+            "created_at": bet.created_at
+        })
+    return results

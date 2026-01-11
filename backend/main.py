@@ -1,6 +1,9 @@
 import os
 import asyncio
-import redis.asyncio as redis
+try:
+    import redis.asyncio as redis
+except ImportError:
+    redis = None
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -11,13 +14,16 @@ import json
 
 from database import create_db_and_tables, engine, get_session
 from api import router
+from models import Stock, EventLog, Prediction
+from race_engine import RaceEngine
 from market import MarketEngine
 from events import EventSystem
-from models import Stock, EventLog, Prediction, User, Portfolio, Transaction, Watchlist, Alert, Achievement, BonusLog, Guru
 
 # Redis Config
-REDIS_URL = os.getenv("REDIS_URL")
+# REDIS_URL = os.getenv("REDIS_URL") # Removed
 redis_client = None
+
+from redis_utils import get_redis, close_redis
 
 # WebSocket Manager
 class ConnectionManager:
@@ -53,6 +59,7 @@ scheduler = AsyncIOScheduler()
 # Market Systems
 market_engine = MarketEngine(lambda: Session(engine))
 event_system = EventSystem(lambda: Session(engine))
+race_engine = RaceEngine(lambda: Session(engine))
 
 def tick():
     # 1. Update Prices
@@ -61,68 +68,113 @@ def tick():
     # 2. Try Generate Event
     event_system.generate_random_event()
     
+    # 3. Race Loop
+    race_engine.process_race_loop()
+    
 async def async_tick_job():
     # Wrapper for async operations
-    tick() # Synchronous part (DB ops, price updates)
+    tick() # Synchronous part (updates memory)
     
     # Async broadcast
     current_event = event_system.get_active_event()
     
+    # Use In-Memory Stocks (No DB Read)
+    # Ensure cache is loaded (tick should have loaded it if needed)
+    stocks_data = [s.model_dump() for s in market_engine.active_stocks]
+    
     with Session(engine) as session:
-        stocks = session.exec(select(Stock)).all()
+        # stocks = session.exec(select(Stock)).all() # REMOVED DB READ
         
         current_forecast = event_system.get_forecast()
         
+        # Get Race Info for Broadcast (Optional, or just let frontend poll)
+        current_race = race_engine.get_current_race(session)
+        race_info = None
+        if current_race:
+            race_info = {
+                "id": current_race.id,
+                "status": current_race.status,
+                "start_time": current_race.start_time,
+                "winner_id": current_race.winner_horse_id
+            }
+
         data = {
             "type": "tick",
-            "stocks": [s.model_dump() for s in stocks],
+            "stocks": stocks_data,
             "event": current_event.model_dump() if current_event else None,
-            "forecast": current_forecast
+            "forecast": current_forecast,
+            "race": race_info
         }
+    
+    # Validated: Redis persistence in tick job
+    # Use get_redis util to ensure we have the connection
+    from redis_utils import get_redis
+    client = await get_redis()
+    if client:
+        try:
+            # SAVE LATEST STATE TO REDIS
+            await client.set("market_stocks", json.dumps(stocks_data, default=str))
+        except Exception as e:
+            print(f"Redis Save Error: {e}")
+
     # Broadcast in async context
     await manager.broadcast(json.dumps(data, default=str))
 
 async def redis_listener():
     """Background task to subscribe to Redis and push to local clients"""
-    if not redis_client: return
+    client = await get_redis()
+    if not client: return
     
-    pubsub = redis_client.pubsub()
+    pubsub = client.pubsub()
     await pubsub.subscribe("stock_updates")
     print(f"[Redis] Subscribed to stock_updates channel")
     
     try:
         async for message in pubsub.listen():
             if message["type"] == "message":
-                await manager.send_to_local(message["data"].decode("utf-8"))
+                await manager.send_to_local(message["data"]) # already decoded if decode_responses=True
     except Exception as e:
         print(f"[Redis] Listener Error: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_client
+    # Init Redis via Utils
+    redis_client = await get_redis()
     
     create_db_and_tables()
-    market_engine.initialize_market()
     
-    # Init Redis
-    listener_task = None
-    if REDIS_URL:
+    # TRY RESTORE FROM REDIS
+    restored = False
+    if redis_client:
         try:
-            redis_client = redis.from_url(REDIS_URL)
-            print(f"[Redis] Connected to {REDIS_URL}")
-            # Start listener
-            listener_task = asyncio.create_task(redis_listener())
+            cached = await redis_client.get("market_stocks")
+            if cached:
+                market_engine.load_from_dict(json.loads(cached))
+                restored = True
         except Exception as e:
-            print(f"[Redis] Connection failed: {e}")
-            redis_client = None
+            print(f"Redis Restore Error: {e}")
+            
+    if not restored:
+        market_engine.initialize_market()
+        market_engine.load_cache() # Fallback to DB
+        
+    race_engine.initialize_horses()
+    
+    # Init Redis Listener
+    listener_task = None
+    if redis_client:
+        listener_task = asyncio.create_task(redis_listener())
     
     # Weekly IPO Check (Monday 9:00 AM)
     scheduler.add_job(market_engine.attempt_weekly_ipo, 'cron', day_of_week='mon', hour=9, minute=0)
 
-    # Root Market Dividends (Every 2 hours)
-    scheduler.add_job(market_engine.payout_dividends, 'interval', hours=2)
+    # Root Market Dividends (Every 2 hours for production)
+    scheduler.add_job(market_engine.payout_dividends, 'interval', minutes=120)
     
-    # Job runs every second
+    # PERSISTENCE JOB: Flush memory to DB every 60 seconds (Reduce Disk I/O)
+    scheduler.add_job(market_engine.persist_state, 'interval', seconds=60)
+    
+    # Job runs every second (Updates Memory Only)
     scheduler.add_job(async_tick_job, 'interval', seconds=1)
     
     # Cleanup old news every hour (keep last 24h)
@@ -135,8 +187,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     if listener_task:
         listener_task.cancel()
-    if redis_client:
-        await redis_client.close()
+    await close_redis()
 
 app = FastAPI(lifespan=lifespan)
 

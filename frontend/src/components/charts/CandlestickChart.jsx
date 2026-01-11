@@ -1,10 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 
-export const CandlestickChart = ({ data, colors = {}, fitTrigger = 0 }) => {
+export const CandlestickChart = ({ data, colors = {}, fitTrigger = 0, viewMode = "history", onLoadMore }) => {
     const chartContainerRef = useRef();
     const chartInstance = useRef(null);
     const seriesInstance = useRef(null);
+    const onLoadMoreRef = useRef(onLoadMore);
+
+    useEffect(() => {
+        onLoadMoreRef.current = onLoadMore;
+    }, [onLoadMore]);
 
     const {
         backgroundColor = 'transparent',
@@ -15,15 +20,14 @@ export const CandlestickChart = ({ data, colors = {}, fitTrigger = 0 }) => {
         upColor = '#ef5350', // Red for up (Taiwan/Asia style)
         downColor = '#26a69a', // Green for down
     } = colors;
-
     useEffect(() => {
         if (!chartContainerRef.current) return;
 
         const handleResize = () => {
             if (chartInstance.current && chartContainerRef.current) {
-                chartInstance.current.applyOptions({ 
+                 chartInstance.current.applyOptions({ 
                     width: chartContainerRef.current.clientWidth 
-                });
+                 });
             }
         };
 
@@ -51,7 +55,6 @@ export const CandlestickChart = ({ data, colors = {}, fitTrigger = 0 }) => {
             }
         });
         
-        // Add Candlestick Series (v5 API)
         const newSeries = chart.addSeries(CandlestickSeries, {
             upColor: upColor, 
             downColor: downColor,
@@ -67,31 +70,61 @@ export const CandlestickChart = ({ data, colors = {}, fitTrigger = 0 }) => {
         chartInstance.current = chart;
         seriesInstance.current = newSeries;
 
-        // Use ResizeObserver instead of window resize for better container responsiveness
         const resizeObserver = new ResizeObserver(() => handleResize());
         resizeObserver.observe(chartContainerRef.current);
+        
+        // --- SCROLL LISTENER ---
+        const handleRangeChange = (newRange) => {
+            if (newRange && newRange.from < 5 && onLoadMoreRef.current) {
+                onLoadMoreRef.current();
+            }
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(handleRangeChange);
 
         return () => {
             resizeObserver.disconnect();
+            chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleRangeChange);
             chart.remove();
         };
-    }, [backgroundColor, textColor, upColor, downColor]); // Re-create if colors change, but data updates separately
+    }, [backgroundColor, textColor, upColor, downColor]); // Re-create if colors change
 
-    // Effect for manual fit trigger
-    useEffect(() => {
-        if (chartInstance.current && fitTrigger > 0) {
-            chartInstance.current.timeScale().fitContent();
-        }
-    }, [fitTrigger]);
-
-    // Update data effect
+    // 1. Data Update Effect
     useEffect(() => {
         if (seriesInstance.current && data) {
              seriesInstance.current.setData(data);
-             // Only auto-fit on initial load if no data previously
-             // or rely on fitTrigger
         }
     }, [data]);
+
+    const initialFitDone = useRef(false);
+
+    // Reset initial fit flag when viewMode changes
+    useEffect(() => {
+        initialFitDone.current = false;
+    }, [viewMode, fitTrigger]);
+
+    // 2. View Mode / Range Effect
+    // This runs on data update OR mode change, but only enforces range ONCE per mode switch.
+    useEffect(() => {
+        if (!chartInstance.current || !data || data.length === 0) return;
+
+        if (!initialFitDone.current) {
+            if (viewMode === "today") {
+                 // Requirement: Load all data (already in `data`), but ZOOM into last 5 hours.
+                 const lastTime = data[data.length - 1].time;
+                 const fiveHoursSeconds = 5 * 60 * 60;
+                 
+                 chartInstance.current.timeScale().setVisibleRange({
+                      from: lastTime - fiveHoursSeconds,
+                      to: lastTime + 300 // 5 min future buffer
+                 });
+                 initialFitDone.current = true;
+                 
+            } else if (viewMode === "history" || fitTrigger > 0) {
+                 chartInstance.current.timeScale().fitContent();
+                 initialFitDone.current = true;
+            }
+        }
+    }, [viewMode, fitTrigger, data]);
 
     return (
         <div 

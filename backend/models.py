@@ -16,6 +16,8 @@ class User(SQLModel, table=True):
     hashed_password: str
     balance: float = Field(default=10000.0)
     created_at: datetime = Field(default_factory=datetime.now)
+    is_trading_frozen: bool = Field(default=False)
+    karma_score: int = Field(default=100)
     
     portfolios: List["Portfolio"] = Relationship(back_populates="user")
     transactions: List["Transaction"] = Relationship(back_populates="user")
@@ -39,8 +41,8 @@ class Stock(SQLModel, table=True):
 
 class StockPriceHistory(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    stock_id: int = Field(foreign_key="stock.id")
-    timestamp: datetime = Field(default_factory=datetime.now)
+    stock_id: int = Field(foreign_key="stock.id", index=True)
+    timestamp: datetime = Field(default_factory=datetime.now, index=True)
     open: float
     high: float
     low: float
@@ -133,3 +135,33 @@ class Prediction(SQLModel, table=True):
     
     stock: Stock = Relationship(back_populates="predictions")
     guru: Optional[Guru] = Relationship()
+
+class Horse(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    speed: int = Field(default=50)   # 基礎速度 (0-100)
+    stamina: int = Field(default=50) # 基礎耐力 (0-100)
+    luck: int = Field(default=50)    # 運氣值 (影響突發事件)
+    wins: int = Field(default=0)
+    total_races: int = Field(default=0)
+    status: str = Field(default="READY") # READY, RETIRED
+
+class Race(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    start_time: datetime
+    status: str = Field(default="SCHEDULED") # SCHEDULED, OPEN, CLOSED, RUNNING, FINISHED
+    winner_horse_id: Optional[int] = Field(default=None, foreign_key="horse.id")
+    
+    # 儲存該場比賽的馬匹與賠率 (JSON 格式 snapshot)
+    participants_snapshot: str 
+
+class Bet(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    race_id: int = Field(foreign_key="race.id")
+    horse_id: int = Field(foreign_key="horse.id")
+    amount: float
+    odds: float
+    result: str = Field(default="PENDING") # PENDING, WON, LOST
+    payout: float = Field(default=0.0)
+    created_at: datetime = Field(default_factory=datetime.now)

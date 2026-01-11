@@ -12,6 +12,7 @@ export default function PortfolioPage() {
     const [holdings, setHoldings] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [rawHoldings, setRawHoldings] = useState([]); // Store raw API data
+    const [activeTab, setActiveTab] = useState("holdings"); // holdings | dividends
     const [totalValue, setTotalValue] = useState(0);
     const [totalUnrealizedPnL, setTotalUnrealizedPnL] = useState(0);
     const [totalRealizedPnL, setTotalRealizedPnL] = useState(0);
@@ -36,12 +37,10 @@ export default function PortfolioPage() {
         };
 
         if (user) fetchData();
-    }, [user, API_URL]); // Removed marketData.stocks dependency
+    }, [user, API_URL]); 
 
     // 2. Calculate Real-time Values (Runs on price update)
     useEffect(() => {
-        // Even if rawHoldings is empty, we run to clear state usually, but map handles empty.
-        
         const processedHoldings = rawHoldings.map(h => {
             const stock = marketData.stocks.find(s => s.id === h.stock_id);
             const currentPrice = stock ? stock.price : 0;
@@ -56,17 +55,17 @@ export default function PortfolioPage() {
                 currentPrice,
                 marketValue,
                 unrealizedPnL,
-                pnlPercent
+                pnlPercent,
+                dividendYield: stock ? (stock.dividend_yield || 0) : 0,
+                estimatedIncome: stock ? (stock.dividend_yield || 0) * marketValue : 0
             };
         }).filter(h => h.quantity !== 0); 
 
         setHoldings(processedHoldings);
 
-    // Calculations
         const tValue = processedHoldings.reduce((acc, curr) => acc + curr.marketValue, 0);
         const tUnrealized = processedHoldings.reduce((acc, curr) => acc + curr.unrealizedPnL, 0);
         
-        // Calculate Total Realized PnL from transactions
         const tRealized = transactions.reduce((acc, curr) => {
             return acc + (curr.profit || 0);
         }, 0);
@@ -130,7 +129,24 @@ export default function PortfolioPage() {
                 </Card>
             </div>
 
-            {/* Holdings Table */}
+            {/* Main Content Tabs */}
+            <div className="flex gap-4 border-b border-border mb-4">
+                <button 
+                    onClick={() => setActiveTab("holdings")}
+                    className={`pb-2 px-4 font-bold border-b-2 transition-colors ${activeTab === "holdings" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}
+                >
+                    持倉概況
+                </button>
+                <button 
+                    onClick={() => setActiveTab("dividends")}
+                    className={`pb-2 px-4 font-bold border-b-2 transition-colors ${activeTab === "dividends" ? "border-amber-500 text-amber-500" : "border-transparent text-muted-foreground"}`}
+                >
+                    配息紀錄 💰
+                </button>
+            </div>
+
+            {/* View: HOLDINGS */}
+            {activeTab === "holdings" && (
             <Card>
                 <CardHeader><CardTitle>持倉明細</CardTitle></CardHeader>
                 <CardContent>
@@ -143,6 +159,8 @@ export default function PortfolioPage() {
                                     <th className="p-2 text-right">數量</th>
                                     <th className="p-2 text-right">平均成本</th>
                                     <th className="p-2 text-right">現價</th>
+                                    <th className="p-2 text-right">當前殖利率</th>
+                                    <th className="p-2 text-right">預估股息</th>
                                     <th className="p-2 text-right">市值</th>
                                     <th className="p-2 text-right">未實現損益</th>
                                 </tr>
@@ -159,6 +177,8 @@ export default function PortfolioPage() {
                                         <td className="p-2 font-mono text-right">{h.quantity}</td>
                                         <td className="p-2 font-mono text-right">${h.average_cost.toFixed(2)}</td>
                                         <td className="p-2 font-mono text-right">${h.currentPrice.toFixed(2)}</td>
+                                        <td className="p-2 font-mono text-right text-amber-400">{(h.dividendYield * 100).toFixed(2)}%</td>
+                                        <td className="p-2 font-mono text-right text-amber-400">${h.estimatedIncome.toFixed(2)}</td>
                                         <td className="p-2 font-mono text-right">${h.marketValue.toFixed(2)}</td>
                                         <td className={`p-2 font-mono font-bold text-right ${h.unrealizedPnL >= 0 ? "text-red-500" : "text-green-500"}`}>
                                             ${h.unrealizedPnL.toFixed(2)} ({h.pnlPercent.toFixed(1)}%)
@@ -166,7 +186,7 @@ export default function PortfolioPage() {
                                     </tr>
                                 ))}
                                 {holdings.length === 0 && (
-                                    <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">暫無持倉</td></tr>
+                                    <tr><td colSpan={8} className="p-4 text-center text-muted-foreground">暫無持倉</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -205,12 +225,61 @@ export default function PortfolioPage() {
                                         <span className="text-muted-foreground text-xs">現價</span>
                                         <span className="font-mono text-muted-foreground">${h.currentPrice.toFixed(1)}</span>
                                     </div>
+                                    {h.dividendYield > 0 && (
+                                        <div className="col-span-2 flex justify-between items-center mt-1 pt-1 border-t border-white/5">
+                                             <span className="text-amber-500 text-xs">預估配息 ({ (h.dividendYield * 100).toFixed(1) }%)</span>
+                                             <span className="font-mono text-amber-400 font-bold">+${h.estimatedIncome.toFixed(1)}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
                     </div>
                 </CardContent>
             </Card>
+            )}
+
+            {/* View: DIVIDENDS */}
+            {activeTab === "dividends" && (
+                <Card className="border-amber-500/20">
+                    <CardHeader>
+                        <CardTitle className="flex justify-between">
+                            <span>📜 歷史配息明細</span>
+                            <span className="text-amber-500 text-base">累計領取: ${transactions.filter(t => t.type === 'dividend').reduce((acc, t) => acc + (t.profit||0), 0).toFixed(2)}</span>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-amber-950/20 text-amber-400">
+                                    <tr>
+                                        <th className="p-3">時間</th>
+                                        <th className="p-3">發放股票</th>
+                                        <th className="p-3 text-right">持有股數</th>
+                                        <th className="p-3 text-right">配息金額</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {transactions.filter(t => t.type === 'dividend').length === 0 ? (
+                                        <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">尚無配息紀錄</td></tr>
+                                    ) : (
+                                        transactions
+                                        .filter(t => t.type === 'dividend')
+                                        .map(t => (
+                                            <tr key={t.id} className="border-b border-white/5 hover:bg-white/5">
+                                                <td className="p-3">{new Date(t.timestamp).toLocaleString("zh-TW")}</td>
+                                                <td className="p-3 font-bold">{t.name} ({t.symbol})</td>
+                                                <td className="p-3 text-right font-mono">{t.quantity}</td>
+                                                <td className="p-3 text-right font-mono text-amber-400 font-bold">+${t.profit.toFixed(2)}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Bonus Widget (Moved Here) */}
             <div className="w-full">
@@ -218,7 +287,7 @@ export default function PortfolioPage() {
             </div>
 
             {/* Transaction History Table */}
-            <Card>
+            <Card className="mt-8">
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>交易紀錄</CardTitle>
                     <div className="text-sm text-muted-foreground font-normal">

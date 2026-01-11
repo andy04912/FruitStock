@@ -66,10 +66,10 @@ export default function NewsPage() {
             </h1>
 
             {/* Tab Headers */}
-            <div className="flex space-x-2 mb-6 border-b border-border/50">
+            <div className="flex space-x-2 mb-6 border-b border-border/50 overflow-x-auto pb-1">
                 <button
                     onClick={() => setActiveTab("news")}
-                    className={`pb-3 px-4 text-lg font-bold transition-all border-b-2 ${
+                    className={`pb-3 px-4 text-lg font-bold transition-all border-b-2 whitespace-nowrap ${
                         activeTab === "news" 
                         ? "border-blue-500 text-blue-400" 
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -81,8 +81,21 @@ export default function NewsPage() {
                     </div>
                 </button>
                 <button
+                    onClick={() => setActiveTab("race")}
+                    className={`pb-3 px-4 text-lg font-bold transition-all border-b-2 whitespace-nowrap ${
+                        activeTab === "race" 
+                        ? "border-orange-500 text-orange-400" 
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                    <div className="flex items-center gap-2">
+                         <span className="text-xl">🏇</span>
+                         賽馬戰報
+                    </div>
+                </button>
+                <button
                     onClick={() => setActiveTab("guru")}
-                    className={`pb-3 px-4 text-lg font-bold transition-all border-b-2 ${
+                    className={`pb-3 px-4 text-lg font-bold transition-all border-b-2 whitespace-nowrap ${
                         activeTab === "guru" 
                         ? "border-purple-500 text-purple-400" 
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -97,14 +110,14 @@ export default function NewsPage() {
 
             {/* Content Area */}
             <div className="min-h-[500px]">
-                {/* News Tab */}
+                {/* News Tab (Exclude Race Results) */}
                 {activeTab === "news" && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
                         <div className="flex items-center justify-between mb-2">
                              <span className="text-xs text-muted-foreground animate-pulse">● 即時更新中 (Live Updates)</span>
                         </div>
                          <div className="space-y-3">
-                            {news.map((item) => (
+                            {news.filter(i => !i.title.includes("賽馬結果")).map((item) => (
                                 <Card key={item.id} className="hover:bg-accent/50 transition-colors border-l-4 border-l-transparent hover:border-l-blue-500">
                                     <CardContent className="p-4">
                                         <div className="flex justify-between items-start mb-1">
@@ -121,7 +134,33 @@ export default function NewsPage() {
                                     </CardContent>
                                 </Card>
                             ))}
-                            {news.length === 0 && <p className="text-center text-muted-foreground py-10">尚無新聞資料...</p>}
+                            {news.filter(i => !i.title.includes("賽馬結果")).length === 0 && <p className="text-center text-muted-foreground py-10">尚無市場新聞...</p>}
+                        </div>
+                    </div>
+                )}
+
+                {/* Race Tab (Only Race Results) */}
+                {activeTab === "race" && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="flex items-center justify-between mb-2">
+                             <span className="text-xs text-muted-foreground">顯示最新的賽馬結果</span>
+                        </div>
+                         <div className="space-y-3">
+                            {news.filter(i => i.title.includes("賽馬結果")).map((item) => (
+                                <Card key={item.id} className="hover:bg-accent/50 transition-colors border-l-4 border-l-transparent border-l-orange-500 bg-orange-950/10">
+                                    <CardContent className="p-4">
+                                        <div className="flex justify-between items-start mb-1">
+                                            <Badge className="mb-1 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border-orange-500/50">
+                                                賽馬結果
+                                            </Badge>
+                                            <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleTimeString()}</span>
+                                        </div>
+                                        <h3 className="font-bold text-lg mb-1 text-orange-200">{item.title}</h3>
+                                        <p className="text-orange-100/70 text-sm">{item.description}</p>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                            {news.filter(i => i.title.includes("賽馬結果")).length === 0 && <p className="text-center text-muted-foreground py-10">尚無賽馬紀錄...</p>}
                         </div>
                     </div>
                 )}

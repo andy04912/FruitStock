@@ -6,7 +6,7 @@ from typing import List
 import json
 import random
 
-from database import get_session
+from database import get_session, engine
 from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet
 from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -16,8 +16,14 @@ from auth import (
     get_current_user,
 )
 from trader import Trader
+from events import EventSystem
+from race_engine import RaceEngine
+from slots_engine import SlotsEngine
+from redis_utils import get_redis
 
 router = APIRouter()
+
+slots_engine = SlotsEngine(lambda: Session(engine))
 
 @router.post("/register", response_model=dict)
 def register(user: User, session: Session = Depends(get_session)):
@@ -538,3 +544,17 @@ def get_bet_history(current_user: User = Depends(get_current_user), session: Ses
             "created_at": bet.created_at
         })
     return results
+
+# --- Slot Machine Endpoints ---
+@router.post("/slots/spin")
+def spin_slots(bet_amount: float, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    try:
+        return slots_engine.spin(current_user.id, bet_amount)
+    except ValueError as e:
+        # Return 200 with status=error for cleaner frontend handling if preferred, 
+        # or 400 Bad Request.
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Internal Server Error")

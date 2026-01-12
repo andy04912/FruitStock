@@ -1,0 +1,2 @@
+RTP: 97.70%
+WARNING: RTP 97.70% is outside target range (90-95%). Adjust weights.

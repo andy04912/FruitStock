@@ -12,6 +12,7 @@ import PortfolioPage from "./pages/PortfolioPage";
 import NewsPage from "./pages/NewsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import RacePage from "./pages/RacePage";
+import SlotMachine from "./pages/SlotMachine";
 
 import NewsTicker from "./components/common/NewsTicker";
 
@@ -52,6 +53,10 @@ function AppContent() {
                         <Route 
                             path="/race" 
                             element={<PrivateRoute><RacePage /></PrivateRoute>} 
+                        />
+                         <Route 
+                            path="/slots" 
+                            element={<PrivateRoute><SlotMachine /></PrivateRoute>} 
                         />
                     </Routes>
                 </div>

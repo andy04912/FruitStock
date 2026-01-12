@@ -54,7 +54,8 @@ export default function Navbar() {
         { path: '/portfolio', label: '資產分佈', icon: Wallet, color: 'text-emerald-400' },
         { path: '/news', label: '新聞中心', icon: Newspaper, color: 'text-blue-400' },
         { path: '/leaderboard', label: '排行榜', icon: Trophy, color: 'text-yellow-400' }, 
-        { path: '/race', label: '賽馬場', icon: Gamepad2, color: 'text-purple-400' }, // Added
+        { path: '/race', label: '賽馬場', icon: Gamepad2, color: 'text-purple-400' },
+        { path: '/slots', label: '老虎機', icon: Gamepad2, color: 'text-pink-400' }, // Added Slots
     ];
 
     const handleLogout = () => {

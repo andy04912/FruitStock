@@ -66,13 +66,12 @@ class RaceEngine:
         for i, p in enumerate(scores):
             prob = p["score"] / total_score
             fair_odds = 1 / prob
-        for i, p in enumerate(scores):
-            prob = p["score"] / total_score
-            fair_odds = 1 / prob
+            
             # Adjust odds: 
-            # User requested NO explicit house edge deduction (no * 0.85).
-            # Odds will look "Fair" (high), but outcome will be manipulated.
-            final_odds = round(fair_odds, 2)
+            # Apply 15% House Edge (RTP = 85%)
+            house_edge_factor = 0.85
+            final_odds = round(fair_odds * house_edge_factor, 2)
+            
             if final_odds < 1.01: final_odds = 1.01
             
             snapshot.append({

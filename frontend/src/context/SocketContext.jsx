@@ -29,7 +29,9 @@ export const SocketProvider = ({ children }) => {
             // Update market state
             setMarketData({
                 stocks: data.stocks,
-                event: data.event || null 
+                event: data.event || null,
+                race: data.race || null,
+                forecast: data.forecast || null
             });
         }
       } catch (e) {

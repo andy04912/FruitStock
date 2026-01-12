@@ -19,7 +19,7 @@ const SYMBOL_STYLES = {
 import { useAuth } from '../context/AuthContext';
 
 const SlotMachine = () => {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, setUser } = useAuth();
   const balance = user ? user.balance : 0;
   
   const [betAmount, setBetAmount] = useState(10);
@@ -72,6 +72,11 @@ const SlotMachine = () => {
         }));
     }, 100);
 
+    // Optimistic Update: Deduct balance immediately
+    if (user) {
+        setUser({ ...user, balance: user.balance - betAmount });
+    }
+
     try {
       const token = localStorage.getItem('token');
       const res = await axios.post(`${API_URL}/slots/spin?bet_amount=${betAmount}`, {}, {
@@ -84,7 +89,12 @@ const SlotMachine = () => {
         const data = res.data;
         setReels(data.symbols); // Snap to result
         setResult(data);
-        refreshUser(); // Sync global state
+        
+        // Update user with authoritative new balance from backend
+        if (user) {
+            setUser({ ...user, balance: data.new_balance });
+        }
+        
         setSpinning(false);
         
         if (data.payout > 0) {
@@ -100,6 +110,7 @@ const SlotMachine = () => {
       clearInterval(shuffleInterval);
       setSpinning(false);
       setIsAutoSpinning(false);
+      refreshUser(); // Sync balance on error
       setError(err.response?.data?.detail || "Spin failed");
     }
   };

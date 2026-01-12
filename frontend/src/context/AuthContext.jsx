@@ -2,6 +2,18 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
 import { API_URL } from "../config";
 
+// Global Request Interceptor to inject token
+axios.interceptors.request.use(
+  (config) => {
+    const currentToken = localStorage.getItem("token");
+    if (currentToken) {
+       config.headers.Authorization = `Bearer ${currentToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -25,12 +37,12 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+
+
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       fetchUser();
     } else {
-      delete axios.defaults.headers.common["Authorization"];
       setUser(null);
     }
   }, [token]);
@@ -40,7 +52,10 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.get(`${API_URL}/users/me`);
       setUser(res.data);
     } catch (error) {
-      logout();
+      console.error("Fetch user failed:", error);
+      if (error.response && error.response.status === 401) {
+          logout();
+      }
     }
   };
 
@@ -76,7 +91,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, API_URL, refreshUser: fetchUser }}>
+    <AuthContext.Provider value={{ user, setUser, token, login, register, logout, API_URL, refreshUser: fetchUser }}>
       {children}
     </AuthContext.Provider>
   );

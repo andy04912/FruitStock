@@ -68,8 +68,8 @@ class RaceEngine:
             fair_odds = 1 / prob
             
             # Adjust odds: 
-            # Apply 15% House Edge (RTP = 85%)
-            house_edge_factor = 0.85
+            # Apply 10% House Edge (RTP = 90%)
+            house_edge_factor = 0.90
             final_odds = round(fair_odds * house_edge_factor, 2)
             
             if final_odds < 1.01: final_odds = 1.01

@@ -51,9 +51,17 @@ class MarketEngine:
         self.active_stocks = [] # List of Stock objects (detached or dicts)
         self.history_buffer = [] # List of StockPriceHistory objects to bulk insert
         
-        # New Chaos Elements
-        self.market_regime = "NORMAL" # NORMAL, BOOM, CRASH, CHAOS
-        self.regime_duration = 0
+        # 各市場獨立 Regime
+        self.market_regimes = {
+            "FRUIT": "NORMAL",
+            "MEAT": "NORMAL",
+            "ROOT": "NORMAL"
+        }
+        self.regime_durations = {
+            "FRUIT": 0,
+            "MEAT": 0,
+            "ROOT": 0
+        }
         self.base_prices = {} # {symbol: price} - Dynamic center of gravity
         
     def initialize_market(self):
@@ -161,24 +169,28 @@ class MarketEngine:
         return self.base_prices[symbol]
 
     def update_regime(self):
-        """Updates global market mood"""
-        self.regime_duration -= 1
-        if self.regime_duration <= 0:
-            # Switch Regime
-            roll = random.random()
-            if roll < 0.7:
-                self.market_regime = "NORMAL"
-                self.regime_duration = random.randint(300, 600) # 5-10 mins
-            elif roll < 0.85:
-                self.market_regime = "BOOM" # Bull Run
-                self.regime_duration = random.randint(60, 180)
-            elif roll < 0.95:
-                self.market_regime = "CRASH" # Bear functionality
-                self.regime_duration = random.randint(60, 120)
-            else:
-                self.market_regime = "CHAOS" # High Volatility
-                self.regime_duration = random.randint(30, 90)
-            print(f"[Market] Regime Switched to: {self.market_regime} (for {self.regime_duration}s)")
+        """各市場獨立更新 Regime"""
+        for category in ["FRUIT", "MEAT", "ROOT"]:
+            self.regime_durations[category] -= 1
+            if self.regime_durations[category] <= 0:
+                # Switch Regime - 各市場獨立切換
+                roll = random.random()
+                if roll < 0.7:
+                    new_regime = "NORMAL"
+                    duration = random.randint(120, 900)
+                elif roll < 0.85:
+                    new_regime = "BOOM"
+                    duration = random.randint(30, 300)
+                elif roll < 0.95:
+                    new_regime = "CRASH"
+                    duration = random.randint(30, 240)
+                else:
+                    new_regime = "CHAOS"
+                    duration = random.randint(30, 180)
+                
+                self.market_regimes[category] = new_regime
+                self.regime_durations[category] = duration
+                print(f"[Market] {category} Regime -> {new_regime} ({duration}s)")
 
     def update_prices(self):
         # Operates purely on self.active_stocks (Memory)
@@ -213,17 +225,20 @@ class MarketEngine:
                 # 1. Base Volatility & Regime Modifiers
                 volatility = stock.volatility if hasattr(stock, 'volatility') else 0.02
                 
+                # 取得該市場的 Regime
+                market_regime = self.market_regimes.get(category, "NORMAL")
+                
                 # Regime Multipliers
                 regime_bias = 0.0
                 regime_vol_mult = 1.0
                 
-                if self.market_regime == "BOOM":
+                if market_regime == "BOOM":
                     regime_bias = 0.0005 # Slight drift up
                     regime_vol_mult = 1.5
-                elif self.market_regime == "CRASH":
+                elif market_regime == "CRASH":
                     regime_bias = -0.001 # Stronger drift down
                     regime_vol_mult = 2.0
-                elif self.market_regime == "CHAOS":
+                elif market_regime == "CHAOS":
                     regime_vol_mult = 4.0 # Pure volatility, no bias
                 
                 # Category Modifiers
@@ -231,34 +246,43 @@ class MarketEngine:
                 if category == 'ROOT': regime_vol_mult *= 0.3 # Roots are stable
                 
                 # 2. Random Walk (Brownian Motion)
-                # Box-Muller transform usually, but random.gauss is fine.
-                # Standard Deviation = volatility / sqrt(time updates per day?) -> simplified here
                 noise = random.gauss(regime_bias, 0.001 * regime_vol_mult)
                 
-                # 3. Dynamic Gravity (Mean Reversion)
-                # Instead of fixed pull, we move the base_price towards current price slowly (Drift)
-                # And pull current price towards base_price weakly.
+                # 3. Dynamic Gravity (Mean Reversion) - 重新設計
                 
-                # Drift the Base (Center of Gravity moves!)
-                # If price stays high, base price follows it slowly.
-                if self.market_regime == "NORMAL":
-                     target_bias = (stock.price - base_price) * 0.0001
-                     self.base_prices[stock.symbol] += target_bias
+                # A. 基準價獨立隨機漫步（形成趨勢但會反轉）
+                base_drift = random.gauss(0, 0.0003)  # 基準價自己也會動
+                if stock.symbol not in self.base_prices:
+                    self.base_prices[stock.symbol] = base_price
+                self.base_prices[stock.symbol] *= (1 + base_drift)
+                self.base_prices[stock.symbol] = max(1.0, self.base_prices[stock.symbol])  # 防止變負
                 
-                # Gravity Force (Non-linear)
-                # Only pull if deviation is huge > 20%
+                # 重新取得更新後的基準價
+                base_price = self.base_prices[stock.symbol]
+                
+                # B. 計算偏離度
                 deviation = (stock.price - base_price) / base_price
                 gravity = 0.0
                 
-                if abs(deviation) > 0.2:
-                    # Pull back
-                    gravity = -deviation * 0.005 # Stronger pull at extremes
+                # C. 突破機制：CHAOS 或 1% 機率時無重力
+                is_breakthrough = (market_regime == "CHAOS") or (random.random() < 0.01)
+                
+                if is_breakthrough:
+                    gravity = 0  # 無重力，自由飛行！
+                    if abs(deviation) > 0.3:
+                        print(f"[Market] 🚀 {stock.name} 突破中！偏離 {deviation*100:.1f}%")
                 elif abs(deviation) > 0.5:
-                     gravity = -deviation * 0.01 # Very strong pull to prevent explosion
+                    # 極端偏離時強力拉回
+                    gravity = -deviation * 0.01
+                elif abs(deviation) > 0.35:
+                    # 中等偏離輕微拉回
+                    gravity = -deviation * 0.005
+                # 35% 以內自由發展
                 
                 if category == 'ROOT':
-                    # Roots hug the line tighter for dividends
-                    gravity = -deviation * 0.02
+                    # ROOT 維持穩定性，但也可以突破
+                    if not is_breakthrough:
+                        gravity = -deviation * 0.015
 
                 # 4. Event Impact (Read-Only)
                 # Reducing frequency of DB checks to optimize (check 1/10 times or just simple cache?)

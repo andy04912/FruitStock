@@ -4,7 +4,7 @@ try:
     import redis.asyncio as redis
 except ImportError:
     redis = None
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,7 +14,7 @@ import json
 
 from database import create_db_and_tables, engine, get_session
 from api import router
-from models import Stock, EventLog, Prediction
+from models import Stock, EventLog, Prediction, User, Portfolio, Transaction
 from race_engine import RaceEngine
 from market import MarketEngine
 from events import EventSystem
@@ -24,6 +24,15 @@ from events import EventSystem
 redis_client = None
 
 from redis_utils import get_redis, close_redis
+
+# Admin Secret
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", None)
+
+def verify_admin(x_admin_key: str = Header(None)):
+    """驗證管理員密鑰，錯誤則返回 404 隱藏存在"""
+    if not ADMIN_SECRET or x_admin_key != ADMIN_SECRET:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return True
 
 # WebSocket Manager
 class ConnectionManager:
@@ -103,7 +112,9 @@ async def async_tick_job():
             "stocks": stocks_data,
             "event": current_event.model_dump() if current_event else None,
             "forecast": current_forecast,
-            "race": race_info
+            "race": race_info,
+            "market_regimes": market_engine.market_regimes,
+            "regime_durations": market_engine.regime_durations
         }
     
     # Validated: Redis persistence in tick job
@@ -284,3 +295,134 @@ def get_predictions(session: Session = Depends(get_session)):
             
         data.append(item)
     return data
+
+# --- Admin Endpoints ---
+
+@app.get("/api/admin/users")
+def admin_get_users(session: Session = Depends(get_session), _: bool = Depends(verify_admin)):
+    """取得所有用戶列表（含淨值計算）"""
+    users = session.exec(select(User)).all()
+    result = []
+    
+    for user in users:
+        # 計算股票市值
+        portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
+        stock_value = 0
+        for p in portfolios:
+            stock = session.get(Stock, p.stock_id)
+            if stock:
+                stock_value += stock.price * p.quantity
+        
+        result.append({
+            "id": user.id,
+            "username": user.username,
+            "balance": round(user.balance, 2),
+            "stock_value": round(stock_value, 2),
+            "net_worth": round(user.balance + stock_value, 2),
+            "created_at": user.created_at,
+            "is_trading_frozen": user.is_trading_frozen,
+            "karma_score": user.karma_score
+        })
+    
+    # 按淨值排序
+    result.sort(key=lambda x: x["net_worth"], reverse=True)
+    return result
+
+@app.get("/api/admin/users/{user_id}")
+def admin_get_user_detail(user_id: int, session: Session = Depends(get_session), _: bool = Depends(verify_admin)):
+    """取得用戶詳細資訊（含持股和最近交易）"""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # 持股
+    portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user_id)).all()
+    holdings = []
+    stock_value = 0
+    for p in portfolios:
+        stock = session.get(Stock, p.stock_id)
+        if stock and p.quantity != 0:
+            value = stock.price * p.quantity
+            stock_value += value
+            holdings.append({
+                "stock_id": p.stock_id,
+                "symbol": stock.symbol,
+                "name": stock.name,
+                "quantity": p.quantity,
+                "avg_cost": round(p.average_cost, 2),
+                "current_price": round(stock.price, 2),
+                "value": round(value, 2),
+                "pnl": round((stock.price - p.average_cost) * p.quantity, 2)
+            })
+    
+    # 最近 20 筆交易
+    transactions = session.exec(
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .order_by(Transaction.timestamp.desc())
+        .limit(20)
+    ).all()
+    
+    txs = []
+    for tx in transactions:
+        stock = session.get(Stock, tx.stock_id)
+        txs.append({
+            "id": tx.id,
+            "type": tx.type,
+            "stock_symbol": stock.symbol if stock else "?",
+            "price": tx.price,
+            "quantity": tx.quantity,
+            "profit": tx.profit,
+            "timestamp": tx.timestamp
+        })
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "balance": round(user.balance, 2),
+        "stock_value": round(stock_value, 2),
+        "net_worth": round(user.balance + stock_value, 2),
+        "created_at": user.created_at,
+        "holdings": holdings,
+        "recent_transactions": txs
+    }
+
+@app.get("/api/admin/market")
+def admin_get_market_status(_: bool = Depends(verify_admin)):
+    """取得市場狀態"""
+    stocks_data = [s.model_dump() for s in market_engine.active_stocks]
+    return {
+        "market_regimes": market_engine.market_regimes,
+        "regime_durations": market_engine.regime_durations,
+        "stocks": stocks_data,
+        "base_prices": market_engine.base_prices
+    }
+
+@app.post("/api/admin/users/{user_id}/balance")
+def admin_adjust_balance(
+    user_id: int, 
+    amount: float, 
+    reason: str = "管理員調整",
+    session: Session = Depends(get_session), 
+    _: bool = Depends(verify_admin)
+):
+    """調整用戶餘額"""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    old_balance = user.balance
+    user.balance += amount
+    session.add(user)
+    session.commit()
+    
+    print(f"[Admin] 調整用戶 {user.username} 餘額: {old_balance} -> {user.balance} ({reason})")
+    
+    return {
+        "user_id": user_id,
+        "old_balance": round(old_balance, 2),
+        "new_balance": round(user.balance, 2),
+        "adjustment": amount,
+        "reason": reason
+    }
+

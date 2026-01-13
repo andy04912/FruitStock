@@ -13,6 +13,7 @@ import NewsPage from "./pages/NewsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import RacePage from "./pages/RacePage";
 import SlotMachine from "./pages/SlotMachine";
+import AdminPage from "./pages/AdminPage";
 
 import NewsTicker from "./components/common/NewsTicker";
 
@@ -30,6 +31,7 @@ function AppContent() {
                 <div id="main-content" className="flex-1 overflow-y-auto relative scroll-smooth">
                     <Routes>
                         <Route path="/login" element={<Login />} />
+                        <Route path="/admin" element={<AdminPage />} />
                         <Route 
                             path="/" 
                             element={<PrivateRoute><Dashboard /></PrivateRoute>} 
@@ -54,7 +56,7 @@ function AppContent() {
                             path="/race" 
                             element={<PrivateRoute><RacePage /></PrivateRoute>} 
                         />
-                         <Route 
+                        <Route 
                             path="/slots" 
                             element={<PrivateRoute><SlotMachine /></PrivateRoute>} 
                         />

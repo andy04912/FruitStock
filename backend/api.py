@@ -7,7 +7,7 @@ import json
 import random
 
 from database import get_session, engine
-from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet
+from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet, Friendship
 from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -558,3 +558,237 @@ def spin_slots(bet_amount: float, current_user: User = Depends(get_current_user)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+# --- 好友系統 Endpoints ---
+
+@router.get("/friends/search")
+def search_users(q: str, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """搜尋用戶（用於加好友）"""
+    if len(q) < 2:
+        return []
+    
+    # 搜尋用戶名稱（模糊匹配）
+    users = session.exec(
+        select(User).where(
+            User.username.contains(q),
+            User.id != current_user.id
+        ).limit(10)
+    ).all()
+    
+    # 檢查是否已是好友或有待處理請求
+    results = []
+    for user in users:
+        # 檢查雙向好友關係
+        existing = session.exec(
+            select(Friendship).where(
+                ((Friendship.user_id == current_user.id) & (Friendship.friend_id == user.id)) |
+                ((Friendship.user_id == user.id) & (Friendship.friend_id == current_user.id))
+            )
+        ).first()
+        
+        status = "none"
+        if existing:
+            if existing.status == "ACCEPTED":
+                status = "friend"
+            elif existing.status == "PENDING":
+                status = "pending_sent" if existing.user_id == current_user.id else "pending_received"
+        
+        results.append({
+            "id": user.id,
+            "username": user.username,
+            "status": status
+        })
+    
+    return results
+
+@router.post("/friends/request/{user_id}")
+def send_friend_request(user_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """發送好友請求"""
+    if user_id == current_user.id:
+        return {"status": "error", "message": "不能加自己為好友"}
+    
+    target_user = session.get(User, user_id)
+    if not target_user:
+        return {"status": "error", "message": "用戶不存在"}
+    
+    # 檢查是否已有關係
+    existing = session.exec(
+        select(Friendship).where(
+            ((Friendship.user_id == current_user.id) & (Friendship.friend_id == user_id)) |
+            ((Friendship.user_id == user_id) & (Friendship.friend_id == current_user.id))
+        )
+    ).first()
+    
+    if existing:
+        if existing.status == "ACCEPTED":
+            return {"status": "error", "message": "已經是好友了"}
+        elif existing.status == "PENDING":
+            return {"status": "error", "message": "已有待處理的請求"}
+    
+    # 建立好友請求
+    friendship = Friendship(
+        user_id=current_user.id,
+        friend_id=user_id,
+        status="PENDING"
+    )
+    session.add(friendship)
+    session.commit()
+    
+    return {"status": "success", "message": f"已發送好友請求給 {target_user.username}"}
+
+@router.post("/friends/accept/{request_id}")
+def accept_friend_request(request_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """接受好友請求"""
+    friendship = session.get(Friendship, request_id)
+    
+    if not friendship or friendship.friend_id != current_user.id:
+        return {"status": "error", "message": "請求不存在"}
+    
+    if friendship.status != "PENDING":
+        return {"status": "error", "message": "請求已處理"}
+    
+    friendship.status = "ACCEPTED"
+    friendship.accepted_at = datetime.now()
+    session.add(friendship)
+    session.commit()
+    
+    sender = session.get(User, friendship.user_id)
+    return {"status": "success", "message": f"已接受 {sender.username} 的好友請求"}
+
+@router.post("/friends/reject/{request_id}")
+def reject_friend_request(request_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """拒絕好友請求"""
+    friendship = session.get(Friendship, request_id)
+    
+    if not friendship or friendship.friend_id != current_user.id:
+        return {"status": "error", "message": "請求不存在"}
+    
+    if friendship.status != "PENDING":
+        return {"status": "error", "message": "請求已處理"}
+    
+    friendship.status = "REJECTED"
+    session.add(friendship)
+    session.commit()
+    
+    return {"status": "success", "message": "已拒絕好友請求"}
+
+@router.delete("/friends/{friend_id}")
+def remove_friend(friend_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """刪除好友"""
+    # 找到雙向好友關係
+    friendship = session.exec(
+        select(Friendship).where(
+            ((Friendship.user_id == current_user.id) & (Friendship.friend_id == friend_id)) |
+            ((Friendship.user_id == friend_id) & (Friendship.friend_id == current_user.id)),
+            Friendship.status == "ACCEPTED"
+        )
+    ).first()
+    
+    if not friendship:
+        return {"status": "error", "message": "好友關係不存在"}
+    
+    session.delete(friendship)
+    session.commit()
+    
+    return {"status": "success", "message": "已刪除好友"}
+
+@router.get("/friends/pending")
+def get_pending_requests(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """取得待處理的好友請求"""
+    requests = session.exec(
+        select(Friendship).where(
+            Friendship.friend_id == current_user.id,
+            Friendship.status == "PENDING"
+        )
+    ).all()
+    
+    results = []
+    for req in requests:
+        sender = session.get(User, req.user_id)
+        results.append({
+            "request_id": req.id,
+            "user_id": sender.id,
+            "username": sender.username,
+            "sent_at": req.created_at
+        })
+    
+    return results
+
+@router.get("/friends")
+def get_friends_list(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """取得好友列表（含淨值）"""
+    # 找出所有已接受的好友關係
+    friendships = session.exec(
+        select(Friendship).where(
+            ((Friendship.user_id == current_user.id) | (Friendship.friend_id == current_user.id)),
+            Friendship.status == "ACCEPTED"
+        )
+    ).all()
+    
+    friend_ids = []
+    for f in friendships:
+        friend_id = f.friend_id if f.user_id == current_user.id else f.user_id
+        friend_ids.append(friend_id)
+    
+    if not friend_ids:
+        return []
+    
+    # 計算每個好友的淨值
+    friends = session.exec(select(User).where(User.id.in_(friend_ids))).all()
+    stocks = session.exec(select(Stock)).all()
+    stock_map = {s.id: s.price for s in stocks}
+    
+    results = []
+    for friend in friends:
+        portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == friend.id)).all()
+        stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+        net_worth = friend.balance + stock_value
+        
+        results.append({
+            "id": friend.id,
+            "username": friend.username,
+            "balance": round(friend.balance, 2),
+            "stock_value": round(stock_value, 2),
+            "net_worth": round(net_worth, 2)
+        })
+    
+    # 按淨值排序
+    results.sort(key=lambda x: x["net_worth"], reverse=True)
+    return results
+
+@router.get("/friends/leaderboard")
+def get_friends_leaderboard(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """好友排行榜（含自己）"""
+    # 取得好友列表
+    friends = get_friends_list(current_user, session)
+    
+    # 計算自己的淨值
+    stocks = session.exec(select(Stock)).all()
+    stock_map = {s.id: s.price for s in stocks}
+    my_portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == current_user.id)).all()
+    my_stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in my_portfolios)
+    my_net_worth = current_user.balance + my_stock_value
+    
+    # 加入自己
+    leaderboard = [{
+        "id": current_user.id,
+        "username": current_user.username,
+        "balance": round(current_user.balance, 2),
+        "stock_value": round(my_stock_value, 2),
+        "net_worth": round(my_net_worth, 2),
+        "is_me": True
+    }]
+    
+    for f in friends:
+        f["is_me"] = False
+        leaderboard.append(f)
+    
+    # 按淨值排序
+    leaderboard.sort(key=lambda x: x["net_worth"], reverse=True)
+    
+    # 加入排名
+    for i, entry in enumerate(leaderboard):
+        entry["rank"] = i + 1
+    
+    return leaderboard
+

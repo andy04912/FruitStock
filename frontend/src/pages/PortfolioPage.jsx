@@ -5,14 +5,15 @@ import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
 import { Card, CardContent, CardHeader, CardTitle, Button } from "../components/ui/components";
 import BonusWidget from "../components/common/BonusWidget";
+import { toast } from "sonner";
 
 export default function PortfolioPage() {
-    const { user, API_URL, refreshUser } = useAuth();
+    const { user, API_URL, refreshUser, token } = useAuth();
     const { marketData } = useSocket();
     const [holdings, setHoldings] = useState([]);
     const [transactions, setTransactions] = useState([]);
-    const [rawHoldings, setRawHoldings] = useState([]); // Store raw API data
-    const [activeTab, setActiveTab] = useState("holdings"); // holdings | dividends
+    const [rawHoldings, setRawHoldings] = useState([]);
+    const [activeTab, setActiveTab] = useState("holdings"); // holdings | dividends | friends
     const [totalValue, setTotalValue] = useState(0);
     const [totalUnrealizedPnL, setTotalUnrealizedPnL] = useState(0);
     const [totalRealizedPnL, setTotalRealizedPnL] = useState(0);
@@ -20,6 +21,14 @@ export default function PortfolioPage() {
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+    
+    // Friends state
+    const [friends, setFriends] = useState([]);
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    
+    const headers = { Authorization: `Bearer ${token}` };
 
     // 1. Fetch Data (Only on mount/user change)
     useEffect(() => {
@@ -83,6 +92,81 @@ export default function PortfolioPage() {
         currentPage * itemsPerPage
     );
 
+    // Friends Functions
+    const fetchFriends = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/friends`, { headers });
+            setFriends(res.data);
+        } catch (e) {}
+    };
+    
+    const fetchPending = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/friends/pending`, { headers });
+            setPendingRequests(res.data);
+        } catch (e) {}
+    };
+    
+    useEffect(() => {
+        if (activeTab === "friends") {
+            fetchFriends();
+            fetchPending();
+        }
+    }, [activeTab]);
+    
+    const searchUsers = async (q) => {
+        if (q.length < 2) { setSearchResults([]); return; }
+        try {
+            const res = await axios.get(`${API_URL}/friends/search?q=${encodeURIComponent(q)}`, { headers });
+            setSearchResults(res.data);
+        } catch (e) {}
+    };
+    
+    useEffect(() => {
+        const timer = setTimeout(() => searchUsers(searchQuery), 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+    
+    const sendRequest = async (userId) => {
+        try {
+            const res = await axios.post(`${API_URL}/friends/request/${userId}`, {}, { headers });
+            if (res.data.status === "success") {
+                toast.success(res.data.message);
+                searchUsers(searchQuery);
+            } else toast.error(res.data.message);
+        } catch (e) { toast.error("發送失敗"); }
+    };
+    
+    const acceptRequest = async (requestId) => {
+        try {
+            const res = await axios.post(`${API_URL}/friends/accept/${requestId}`, {}, { headers });
+            if (res.data.status === "success") {
+                toast.success(res.data.message);
+                fetchPending();
+                fetchFriends();
+            }
+        } catch (e) {}
+    };
+    
+    const rejectRequest = async (requestId) => {
+        try {
+            await axios.post(`${API_URL}/friends/reject/${requestId}`, {}, { headers });
+            toast.success("已拒絕");
+            fetchPending();
+        } catch (e) {}
+    };
+    
+    const removeFriend = async (friendId, username) => {
+        if (!confirm(`確定要刪除好友 ${username} 嗎？`)) return;
+        try {
+            const res = await axios.delete(`${API_URL}/friends/${friendId}`, { headers });
+            if (res.data.status === "success") {
+                toast.success("已刪除好友");
+                fetchFriends();
+            }
+        } catch (e) {}
+    };
+
     return (
         <div className="container mx-auto p-4 max-w-screen-xl space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -142,6 +226,17 @@ export default function PortfolioPage() {
                     className={`pb-2 px-4 font-bold border-b-2 transition-colors ${activeTab === "dividends" ? "border-amber-500 text-amber-500" : "border-transparent text-muted-foreground"}`}
                 >
                     配息紀錄 💰
+                </button>
+                <button 
+                    onClick={() => setActiveTab("friends")}
+                    className={`pb-2 px-4 font-bold border-b-2 transition-colors relative ${activeTab === "friends" ? "border-orange-500 text-orange-500" : "border-transparent text-muted-foreground"}`}
+                >
+                    好友 👥
+                    {pendingRequests.length > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center">
+                            {pendingRequests.length}
+                        </span>
+                    )}
                 </button>
             </div>
 
@@ -276,6 +371,87 @@ export default function PortfolioPage() {
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* View: FRIENDS */}
+            {activeTab === "friends" && (
+                <Card className="border-orange-500/20">
+                    <CardHeader>
+                        <CardTitle>👥 好友管理</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        {/* 待處理請求 */}
+                        {pendingRequests.length > 0 && (
+                            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
+                                <h3 className="font-bold text-orange-400 mb-3">📩 待處理的好友請求 ({pendingRequests.length})</h3>
+                                <div className="space-y-2">
+                                    {pendingRequests.map(req => (
+                                        <div key={req.request_id} className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3">
+                                            <span className="font-medium">{req.username}</span>
+                                            <div className="flex gap-2">
+                                                <Button size="sm" onClick={() => acceptRequest(req.request_id)} className="bg-emerald-600 hover:bg-emerald-500">接受</Button>
+                                                <Button size="sm" variant="outline" onClick={() => rejectRequest(req.request_id)}>拒絕</Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* 搜尋加好友 */}
+                        <div>
+                            <h3 className="font-bold mb-3">🔍 加好友</h3>
+                            <input
+                                type="text"
+                                placeholder="輸入用戶名搜尋（至少 2 個字）"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500 mb-3"
+                            />
+                            {searchResults.length > 0 && (
+                                <div className="space-y-2">
+                                    {searchResults.map(user => (
+                                        <div key={user.id} className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3">
+                                            <span className="font-medium">{user.username}</span>
+                                            {user.status === "friend" ? (
+                                                <span className="text-emerald-400 text-sm">✓ 已是好友</span>
+                                            ) : user.status === "pending_sent" ? (
+                                                <span className="text-yellow-400 text-sm">⏳ 已發送請求</span>
+                                            ) : user.status === "pending_received" ? (
+                                                <span className="text-blue-400 text-sm">📩 待你接受</span>
+                                            ) : (
+                                                <Button size="sm" onClick={() => sendRequest(user.id)} className="bg-orange-600 hover:bg-orange-500">加好友</Button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {searchQuery.length >= 2 && searchResults.length === 0 && (
+                                <div className="text-center text-zinc-500 py-4">找不到用戶</div>
+                            )}
+                        </div>
+                        
+                        {/* 好友列表 */}
+                        <div>
+                            <h3 className="font-bold mb-3">我的好友 ({friends.length})</h3>
+                            {friends.length === 0 ? (
+                                <div className="text-center text-zinc-500 py-4">還沒有好友</div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {friends.map(f => (
+                                        <div key={f.id} className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3">
+                                            <div>
+                                                <span className="font-medium">{f.username}</span>
+                                                <span className="text-zinc-500 text-sm ml-2">淨值: ${f.net_worth.toLocaleString()}</span>
+                                            </div>
+                                            <button onClick={() => removeFriend(f.id, f.username)} className="text-red-400 hover:text-red-300 text-sm">刪除</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

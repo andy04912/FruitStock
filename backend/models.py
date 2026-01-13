@@ -175,3 +175,13 @@ class SlotSpin(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
     
     user: User = Relationship()
+
+class Friendship(SQLModel, table=True):
+    """好友關係模型"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # 發起者
+    friend_id: int = Field(foreign_key="user.id", index=True)  # 被加的人
+    status: str = Field(default="PENDING")  # PENDING, ACCEPTED, REJECTED
+    created_at: datetime = Field(default_factory=datetime.now)
+    accepted_at: Optional[datetime] = Field(default=None)
+

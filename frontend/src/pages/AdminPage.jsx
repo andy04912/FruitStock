@@ -101,7 +101,7 @@ export default function AdminPage() {
   const authenticate = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/admin/users`, { headers });
+      const res = await fetch(`${API_URL}api/admin/users`, { headers });
       if (res.status === 404) {
         toast.error("密鑰錯誤");
         setIsAuthenticated(false);

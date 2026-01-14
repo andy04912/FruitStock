@@ -74,13 +74,13 @@ export default function AdminPage() {
 
   // API Calls
   const fetchData = async (endpoint) => {
-    const res = await fetch(`${API_URL}/api/admin/${endpoint}`, { headers });
+    const res = await fetch(`${API_URL}api/admin/${endpoint}`, { headers });
     if (!res.ok) throw new Error("Failed");
     return res.json();
   };
 
   const postData = async (endpoint, body) => {
-    const res = await fetch(`${API_URL}/api/admin/${endpoint}`, {
+    const res = await fetch(`${API_URL}api/admin/${endpoint}`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -89,7 +89,7 @@ export default function AdminPage() {
   };
 
   const putData = async (endpoint, body) => {
-    const res = await fetch(`${API_URL}/api/admin/${endpoint}`, {
+    const res = await fetch(`${API_URL}api/admin/${endpoint}`, {
       method: "PUT",
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify(body)

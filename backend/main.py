@@ -287,7 +287,7 @@ app.include_router(
 def read_root():
     return {"message": "Stock Market Simulation API"}
 
-@app.websocket("/ws")
+@app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:

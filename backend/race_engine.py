@@ -18,8 +18,21 @@ class RaceEngine:
             existing = session.exec(select(Horse)).first()
             if not existing:
                 print("initializing Horses...")
+                used_names = set()
                 for _ in range(20):
-                    name = f"{random.choice(HORSE_NAMES_PREFIX)}{random.choice(HORSE_NAMES_SUFFIX)}"
+                    # 確保名稱唯一
+                    attempts = 0
+                    while attempts < 100:
+                        name = f"{random.choice(HORSE_NAMES_PREFIX)}{random.choice(HORSE_NAMES_SUFFIX)}"
+                        if name not in used_names:
+                            used_names.add(name)
+                            break
+                        attempts += 1
+                    else:
+                        # 如果嘗試 100 次還是重複，加上數字
+                        name = f"{random.choice(HORSE_NAMES_PREFIX)}{random.choice(HORSE_NAMES_SUFFIX)}{len(used_names)}"
+                        used_names.add(name)
+                    
                     horse = Horse(
                         name=name,
                         speed=random.randint(40, 95),
@@ -27,8 +40,8 @@ class RaceEngine:
                         luck=random.randint(20, 80)
                     )
                     session.add(horse)
-                    # Avoid duplicate names ideally, but random enough for now
                 session.commit()
+
 
     def get_current_race(self, session: Session) -> Race:
         """Returns the active or next scheduled race."""

@@ -50,6 +50,66 @@ def create_db_and_tables():
                 except Exception as e:
                     print(f"Migration Error (karma_score): {e}")
 
+            # Migration 3: nickname
+            if "nickname" not in columns:
+                print("Migrating: Adding nickname to user table...")
+                try:
+                    connection.execute(text('ALTER TABLE "user" ADD COLUMN nickname VARCHAR(16) DEFAULT NULL'))
+                    connection.commit()
+                except Exception as e:
+                    print(f"Migration Error (nickname): {e}")
+
+            # Migration 4: nickname_updated_at
+            if "nickname_updated_at" not in columns:
+                print("Migrating: Adding nickname_updated_at to user table...")
+                try:
+                    connection.execute(text('ALTER TABLE "user" ADD COLUMN nickname_updated_at DATETIME DEFAULT NULL'))
+                    connection.commit()
+                except Exception as e:
+                    print(f"Migration Error (nickname_updated_at): {e}")
+
+        # Check if userdailysnapshot table exists
+        if not inspector.has_table("userdailysnapshot"):
+            print("Creating userdailysnapshot table...")
+            try:
+                connection.execute(text('''
+                    CREATE TABLE IF NOT EXISTS userdailysnapshot (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        date VARCHAR(10) NOT NULL,
+                        total_assets FLOAT NOT NULL,
+                        cash FLOAT NOT NULL,
+                        stock_value FLOAT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES user(id)
+                    )
+                '''))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_userdailysnapshot_user_id ON userdailysnapshot(user_id)'))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_userdailysnapshot_date ON userdailysnapshot(date)'))
+                connection.commit()
+            except Exception as e:
+                print(f"Migration Error (userdailysnapshot): {e}")
+
+        # Check if systemconfig table exists
+        if not inspector.has_table("systemconfig"):
+            print("Creating systemconfig table...")
+            try:
+                connection.execute(text('''
+                    CREATE TABLE IF NOT EXISTS systemconfig (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key VARCHAR(100) NOT NULL UNIQUE,
+                        value TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        category VARCHAR(50) DEFAULT 'general',
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                '''))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_systemconfig_key ON systemconfig(key)'))
+                connection.commit()
+            except Exception as e:
+                print(f"Migration Error (systemconfig): {e}")
+
 def get_session():
     with Session(engine) as session:
         yield session
+

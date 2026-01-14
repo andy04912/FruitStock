@@ -30,6 +30,13 @@ const SlotMachine = () => {
   const [winAnimation, setWinAnimation] = useState(false);
   const [isAutoSpinning, setIsAutoSpinning] = useState(false);
   const [winHistory, setWinHistory] = useState([]);
+  
+  // 當輪統計
+  const [sessionStats, setSessionStats] = useState({
+    totalBet: 0,
+    totalPayout: 0,
+    spins: 0
+  });
 
   useEffect(() => {
     refreshUser();
@@ -104,6 +111,13 @@ const SlotMachine = () => {
                 ...prev
             ].slice(0, 2)); // Keep only last 2
         }
+        
+        // 更新當輪統計
+        setSessionStats(prev => ({
+            totalBet: prev.totalBet + betAmount,
+            totalPayout: prev.totalPayout + (data.payout || 0),
+            spins: prev.spins + 1
+        }));
       }, 1500);
 
     } catch (err) {
@@ -189,7 +203,47 @@ const SlotMachine = () => {
             </div>
         </div>
 
+        {/* 當輪統計 */}
+        {sessionStats.spins > 0 && (
+            <div className="mt-4 w-full">
+                <div className="bg-cyan-950/30 rounded-lg p-4 border border-cyan-500/20">
+                    <h3 className="text-cyan-400 text-xs font-bold mb-3 uppercase tracking-wider text-center flex items-center justify-center gap-2">
+                        📊 本輪統計
+                    </h3>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                        <div className="p-2 bg-gray-900/50 rounded">
+                            <div className="text-[10px] text-gray-400">轉動次數</div>
+                            <div className="font-mono font-bold text-white">{sessionStats.spins}</div>
+                        </div>
+                        <div className="p-2 bg-gray-900/50 rounded">
+                            <div className="text-[10px] text-gray-400">總下注</div>
+                            <div className="font-mono font-bold text-yellow-400">${sessionStats.totalBet}</div>
+                        </div>
+                        <div className="p-2 bg-gray-900/50 rounded">
+                            <div className="text-[10px] text-gray-400">總回收</div>
+                            <div className="font-mono font-bold text-emerald-400">${sessionStats.totalPayout}</div>
+                        </div>
+                        <div className="p-2 bg-gray-900/50 rounded">
+                            <div className="text-[10px] text-gray-400">損益</div>
+                            <div className={`font-mono font-bold ${(sessionStats.totalPayout - sessionStats.totalBet) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {(sessionStats.totalPayout - sessionStats.totalBet) >= 0 ? '+' : ''}
+                                {(sessionStats.totalPayout - sessionStats.totalBet).toFixed(0)}
+                            </div>
+                        </div>
+                    </div>
+                    {sessionStats.totalBet > 0 && (
+                        <div className="text-center mt-2 text-xs text-gray-400">
+                            ROI: <span className={`font-mono ${((sessionStats.totalPayout - sessionStats.totalBet) / sessionStats.totalBet * 100) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {(((sessionStats.totalPayout - sessionStats.totalBet) / sessionStats.totalBet) * 100).toFixed(1)}%
+                            </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+
         {/* Win History */}
+
         {winHistory.length > 0 && (
             <div className="mt-4 w-full">
                 <div className="bg-black/40 rounded-lg p-3 border border-gray-700">

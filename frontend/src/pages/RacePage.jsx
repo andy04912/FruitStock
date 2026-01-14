@@ -3,7 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Badge } from "../components/ui/components";
 import { toast } from "sonner";
-import { Timer, Trophy, DollarSign, History } from "lucide-react";
+import { Timer, Trophy, DollarSign, History, Users } from "lucide-react";
 import { sounds } from "../utils/sound";
 
 export default function RacePage() {
@@ -14,6 +14,8 @@ export default function RacePage() {
     const [selectedHorse, setSelectedHorse] = useState(null);
     const [betting, setBetting] = useState(false);
     const [history, setHistory] = useState([]);
+    const [friendsBets, setFriendsBets] = useState([]);
+    const [showFriendsBets, setShowFriendsBets] = useState(false);
     
     // Animation State
     const [positions, setPositions] = useState({}); // { horse_id: percentage }
@@ -61,6 +63,20 @@ export default function RacePage() {
         const interval = setInterval(fetchRace, 2000); // 2s polling
         return () => clearInterval(interval);
     }, [API_URL]);
+
+    // 取得好友投注
+    useEffect(() => {
+        const fetchFriendsBets = async () => {
+            if (!race?.id) return;
+            try {
+                const res = await axios.get(`${API_URL}/race/friends-bets/${race.id}`);
+                setFriendsBets(res.data);
+            } catch (e) {
+                console.error("Friends bets fetch error", e);
+            }
+        };
+        fetchFriendsBets();
+    }, [race?.id, API_URL]);
 
     const handleBet = async () => {
         if (!selectedHorse || betAmount <= 0) return;
@@ -426,7 +442,89 @@ export default function RacePage() {
                             </CardContent>
                         </Card>
 
+                        {/* 當輪統計 */}
+                        {race?.user_bets?.length > 0 && (
+                            <Card className="border-cyan-500/20 bg-cyan-950/20">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm flex items-center gap-2">
+                                        📊 本輪統計
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {(() => {
+                                        const totalBet = race.user_bets.reduce((sum, b) => sum + b.amount, 0);
+                                        const totalPayout = race.user_bets.reduce((sum, b) => sum + (b.payout || 0), 0);
+                                        const profit = race.status === "FINISHED" ? totalPayout - totalBet : 0;
+                                        const profitPercent = totalBet > 0 ? (profit / totalBet * 100) : 0;
+                                        
+                                        return (
+                                            <div className="grid grid-cols-3 gap-2 text-center">
+                                                <div className="p-2 bg-slate-900/50 rounded">
+                                                    <div className="text-[10px] text-slate-400">下注總額</div>
+                                                    <div className="font-mono font-bold text-yellow-400">${totalBet}</div>
+                                                </div>
+                                                <div className="p-2 bg-slate-900/50 rounded">
+                                                    <div className="text-[10px] text-slate-400">回收金額</div>
+                                                    <div className="font-mono font-bold text-emerald-400">${totalPayout}</div>
+                                                </div>
+                                                <div className="p-2 bg-slate-900/50 rounded">
+                                                    <div className="text-[10px] text-slate-400">損益</div>
+                                                    <div className={`font-mono font-bold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {race.status === "FINISHED" ? (
+                                                            <>
+                                                                {profit >= 0 ? '+' : ''}{profit.toFixed(0)}
+                                                                <span className="text-[10px] block">({profitPercent.toFixed(1)}%)</span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-slate-500">--</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* 好友投注 */}
+                        {friendsBets.length > 0 && (
+                            <Card className="border-purple-500/20 bg-purple-950/20">
+                                <CardHeader className="pb-2">
+                                    <CardTitle 
+                                        className="text-sm flex items-center gap-2 cursor-pointer"
+                                        onClick={() => setShowFriendsBets(!showFriendsBets)}
+                                    >
+                                        <Users className="h-4 w-4" />
+                                        好友投注 ({friendsBets.length})
+                                        <span className="text-xs ml-auto">{showFriendsBets ? '▲' : '▼'}</span>
+                                    </CardTitle>
+                                </CardHeader>
+                                {showFriendsBets && (
+                                    <CardContent>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                            {friendsBets.map((bet, idx) => (
+                                                <div key={idx} className="flex items-center justify-between p-2 bg-slate-900/50 rounded text-sm">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-purple-600/30 flex items-center justify-center text-[10px] text-purple-300">
+                                                            {bet.username?.charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <span className="font-medium truncate max-w-[80px]">{bet.username}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-[10px] text-slate-400">{bet.horse_name}</div>
+                                                        <div className="font-mono text-yellow-400">${bet.amount}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                )}
+                            </Card>
+                        )}
+
                         {/* Recent History */}
+
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-lg flex items-center">

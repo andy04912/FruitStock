@@ -19,6 +19,10 @@ class User(SQLModel, table=True):
     is_trading_frozen: bool = Field(default=False)
     karma_score: int = Field(default=100)
     
+    # 暱稱系統（新增）
+    nickname: Optional[str] = Field(default=None, max_length=16)
+    nickname_updated_at: Optional[datetime] = Field(default=None)
+    
     portfolios: List["Portfolio"] = Relationship(back_populates="user")
     transactions: List["Transaction"] = Relationship(back_populates="user")
     alerts: List["Alert"] = Relationship(back_populates="user")
@@ -184,4 +188,23 @@ class Friendship(SQLModel, table=True):
     status: str = Field(default="PENDING")  # PENDING, ACCEPTED, REJECTED
     created_at: datetime = Field(default_factory=datetime.now)
     accepted_at: Optional[datetime] = Field(default=None)
+
+class UserDailySnapshot(SQLModel, table=True):
+    """每日資產快照，用於繪製資產走勢圖"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    date: str = Field(index=True)  # YYYY-MM-DD
+    total_assets: float  # 總資產（現金 + 股票市值）
+    cash: float  # 現金餘額
+    stock_value: float  # 股票市值
+    created_at: datetime = Field(default_factory=datetime.now)
+
+class SystemConfig(SQLModel, table=True):
+    """系統配置，可動態調整的參數"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key: str = Field(index=True, unique=True)  # 參數名稱
+    value: str  # 參數值（JSON 格式儲存）
+    description: str  # 參數說明
+    category: str = Field(default="general")  # 分類：market, race, slots, user
+    updated_at: datetime = Field(default_factory=datetime.now)
 

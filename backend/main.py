@@ -14,10 +14,11 @@ import json
 
 from database import create_db_and_tables, engine, get_session
 from api import router
-from models import Stock, EventLog, Prediction, User, Portfolio, Transaction
+from models import Stock, EventLog, Prediction, User, Portfolio, Transaction, UserDailySnapshot, SystemConfig
 from race_engine import RaceEngine
 from market import MarketEngine
 from events import EventSystem
+import admin_api
 
 # Redis Config
 # REDIS_URL = os.getenv("REDIS_URL") # Removed
@@ -69,6 +70,60 @@ scheduler = AsyncIOScheduler()
 market_engine = MarketEngine(lambda: Session(engine))
 event_system = EventSystem(lambda: Session(engine))
 race_engine = RaceEngine(lambda: Session(engine))
+
+def daily_asset_snapshot():
+    """記錄所有用戶的每日資產快照（每天 00:00 執行）"""
+    from datetime import datetime
+    with Session(engine) as session:
+        users = session.exec(select(User)).all()
+        stocks = session.exec(select(Stock)).all()
+        stock_map = {s.id: s.price for s in stocks}
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        for user in users:
+            # 檢查今天是否已有快照
+            existing = session.exec(
+                select(UserDailySnapshot).where(
+                    UserDailySnapshot.user_id == user.id,
+                    UserDailySnapshot.date == today
+                )
+            ).first()
+            if existing:
+                continue
+            
+            portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
+            stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+            total = user.balance + stock_value
+            
+            snapshot = UserDailySnapshot(
+                user_id=user.id,
+                date=today,
+                total_assets=round(total, 2),
+                cash=round(user.balance, 2),
+                stock_value=round(stock_value, 2)
+            )
+            session.add(snapshot)
+        session.commit()
+        print(f"[Daily Snapshot] 已記錄 {len(users)} 位用戶的資產快照")
+
+def migrate_nicknames():
+    """遷移：為現有用戶設置預設暱稱（username）"""
+    with Session(engine) as session:
+        # 找出沒有暱稱的用戶
+        users = session.exec(select(User).where(User.nickname == None)).all()
+        if not users:
+            return
+        
+        for user in users:
+            # 1 字帳號加上 "Test" 後綴
+            if len(user.username) == 1:
+                user.nickname = user.username + "Test"
+            else:
+                user.nickname = user.username
+            session.add(user)
+        
+        session.commit()
+        print(f"[Migration] 已為 {len(users)} 位用戶設置預設暱稱")
 
 def tick():
     # 1. Update Prices
@@ -171,6 +226,12 @@ async def lifespan(app: FastAPI):
         
     race_engine.initialize_horses()
     
+    # 遷移：為現有用戶設置預設暱稱
+    migrate_nicknames()
+    
+    # 啟動時先記錄一次今日快照（如果還沒有）
+    daily_asset_snapshot()
+    
     # Init Redis Listener
     listener_task = None
     if redis_client:
@@ -191,7 +252,11 @@ async def lifespan(app: FastAPI):
     # Cleanup old news every hour (keep last 24h)
     scheduler.add_job(event_system.cleanup_old_events, 'interval', hours=1, args=[24])
     
+    # 每日 00:00 記錄資產快照
+    scheduler.add_job(daily_asset_snapshot, 'cron', hour=0, minute=0)
+    
     scheduler.start()
+
     
     yield
     
@@ -210,6 +275,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router, prefix="/api")
+
+# Admin API with authentication
+app.include_router(
+    admin_api.router, 
+    prefix="/api/admin", 
+    dependencies=[Depends(verify_admin)]
+)
 
 @app.get("/")
 def read_root():

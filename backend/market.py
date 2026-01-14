@@ -64,6 +64,10 @@ class MarketEngine:
         }
         self.base_prices = {} # {symbol: price} - Dynamic center of gravity
         
+        # 個別股票趨勢（新增）
+        # 格式: {stock_id: {"direction": 1/-1, "strength": 0.001, "duration": 100, "momentum": 0.0}}
+        self.stock_trends = {}
+        
     def initialize_market(self):
         with self.session_factory() as session:
             # ... (Schema migrations omit for brevity as they run once) ...
@@ -218,97 +222,122 @@ class MarketEngine:
                 if stock.day_open == 0:
                     stock.day_open = stock.price
 
-                # --- NEW CHAOS MATH ---
+                # --- 個別股票趨勢機制（60% 個別 / 40% 市場） ---
                 category = getattr(stock, 'category', 'FRUIT')
                 base_price = self.get_base_price(stock.symbol)
                 
-                # 1. Base Volatility & Regime Modifiers
-                volatility = stock.volatility if hasattr(stock, 'volatility') else 0.02
+                # 1. 取得或初始化該股票的個別趨勢
+                if stock.id not in self.stock_trends or self.stock_trends[stock.id]["duration"] <= 0:
+                    # 新趨勢：隨機方向和強度
+                    direction = random.choice([1, 1, 1, -1, -1, -1, 0])  # 70% 有方向，30% 橫盤
+                    strength = random.uniform(0.0002, 0.0012)  # 趨勢強度
+                    duration = random.randint(60, 600)  # 1-10分鐘持續
+                    momentum = random.uniform(0.8, 1.2)  # 動能係數
+                    self.stock_trends[stock.id] = {
+                        "direction": direction,
+                        "strength": strength,
+                        "duration": duration,
+                        "momentum": momentum
+                    }
                 
+                trend = self.stock_trends[stock.id]
+                trend["duration"] -= 1
+                
+                # 2. 計算個別股票的變化（60%）
+                individual_noise = random.gauss(0, 0.0003)  # 微小隨機
+                individual_trend = trend["direction"] * trend["strength"] * trend["momentum"]
+                individual_change = (individual_trend + individual_noise) * 0.6
+                
+                # 3. 計算市場影響（40%）
                 # 取得該市場的 Regime
                 market_regime = self.market_regimes.get(category, "NORMAL")
                 
-                # Regime Multipliers
                 regime_bias = 0.0
                 regime_vol_mult = 1.0
+                is_major_event = False
                 
                 if market_regime == "BOOM":
-                    regime_bias = 0.0005 # Slight drift up
-                    regime_vol_mult = 1.5
+                    regime_bias = 0.0004
+                    regime_vol_mult = 1.3
                 elif market_regime == "CRASH":
-                    regime_bias = -0.001 # Stronger drift down
-                    regime_vol_mult = 2.0
+                    regime_bias = -0.0006
+                    regime_vol_mult = 1.5
+                    is_major_event = True  # 崩盤是大事件
                 elif market_regime == "CHAOS":
-                    regime_vol_mult = 4.0 # Pure volatility, no bias
+                    regime_vol_mult = 2.5
+                    is_major_event = True  # 混亂也是大事件
                 
-                # Category Modifiers
-                if category == 'MEAT': regime_vol_mult *= 1.2
-                if category == 'ROOT': regime_vol_mult *= 0.3 # Roots are stable
+                # 市場隨機波動
+                market_noise = random.gauss(regime_bias, 0.0005 * regime_vol_mult)
+                market_change = market_noise * 0.4
                 
-                # 2. Random Walk (Brownian Motion)
-                noise = random.gauss(regime_bias, 0.001 * regime_vol_mult)
+                # 4. 大事件時市場影響增強（從 40% 變成 70%）
+                if is_major_event:
+                    # 市場影響增強，個別趨勢減弱
+                    total_individual = individual_change * 0.3  # 降到 30%
+                    total_market = market_noise * 0.7  # 升到 70%
+                else:
+                    total_individual = individual_change
+                    total_market = market_change
                 
-                # 3. Dynamic Gravity (Mean Reversion) - 重新設計
+                # 5. 群體效應（5% 機率，讓同類股票短暫同向）
+                herd_effect = 0.0
+                if random.random() < 0.03:  # 3% 機率觸發群體效應
+                    herd_direction = random.choice([1, -1])
+                    herd_effect = herd_direction * random.uniform(0.0003, 0.0008)
                 
-                # A. 基準價獨立隨機漫步（形成趨勢但會反轉）
-                base_drift = random.gauss(0, 0.0003)  # 基準價自己也會動
+                # 6. 基準價緩慢漂移（形成長期趨勢）
+                base_drift = random.gauss(0, 0.0002)
                 if stock.symbol not in self.base_prices:
                     self.base_prices[stock.symbol] = base_price
                 self.base_prices[stock.symbol] *= (1 + base_drift)
-                self.base_prices[stock.symbol] = max(1.0, self.base_prices[stock.symbol])  # 防止變負
-                
-                # 重新取得更新後的基準價
+                self.base_prices[stock.symbol] = max(1.0, self.base_prices[stock.symbol])
                 base_price = self.base_prices[stock.symbol]
                 
-                # B. 計算偏離度
+                # 7. 重力回歸（防止價格偏離太遠）
                 deviation = (stock.price - base_price) / base_price
                 gravity = 0.0
                 
-                # C. 突破機制：CHAOS 或 1% 機率時無重力
-                is_breakthrough = (market_regime == "CHAOS") or (random.random() < 0.01)
+                is_breakthrough = (market_regime == "CHAOS") or (random.random() < 0.02)
                 
                 if is_breakthrough:
-                    gravity = 0  # 無重力，自由飛行！
+                    gravity = 0
                     if abs(deviation) > 0.3:
                         print(f"[Market] 🚀 {stock.name} 突破中！偏離 {deviation*100:.1f}%")
                 elif abs(deviation) > 0.5:
-                    # 極端偏離時強力拉回
-                    gravity = -deviation * 0.01
+                    gravity = -deviation * 0.008
                 elif abs(deviation) > 0.35:
-                    # 中等偏離輕微拉回
-                    gravity = -deviation * 0.005
-                # 35% 以內自由發展
+                    gravity = -deviation * 0.004
                 
+                # ROOT 類別更穩定
                 if category == 'ROOT':
-                    # ROOT 維持穩定性，但也可以突破
                     if not is_breakthrough:
-                        gravity = -deviation * 0.015
-
-                # 4. Event Impact (Read-Only)
-                # Reducing frequency of DB checks to optimize (check 1/10 times or just simple cache?)
-                # For safety, we keep checking but maybe simpler query?
-                # Keeping original logic for compatibility but tuning down effect
+                        gravity = -deviation * 0.012
+                    total_individual *= 0.5  # ROOT 個別趨勢減半
+                    total_market *= 0.3  # ROOT 市場影響也減弱
+                
+                # 8. 事件影響（從 DB 讀取）
                 statement = select(EventLog).where(
                     EventLog.target_stock_id == stock.id,
                     EventLog.created_at >= now - timedelta(seconds=60)
                 )
                 active_events = session.exec(statement).all()
                 total_impact = sum(e.impact_multiplier for e in active_events)
+                event_force = (total_impact / 60.0)
                 
-                trend_force = (total_impact / 60.0) # Spread impact over minute
-                
-                # 5. Guru/Sniper (Simplified Probability)
+                # 9. 狙擊手效應（罕見的大波動）
                 sniper_effect = 0
-                if random.random() < 0.0002: # 0.02%
-                     sniper_effect = random.choice([0.02, -0.02, 0.01, -0.01])
-                     print(f"[Market] Sniper hit {stock.name}: {sniper_effect*100}%")
+                if random.random() < 0.0002:
+                    sniper_effect = random.choice([0.02, -0.02, 0.01, -0.01])
+                    print(f"[Market] Sniper hit {stock.name}: {sniper_effect*100}%")
 
                 # FINAL CALCULATION
-                change_percent = noise + gravity + trend_force + sniper_effect
+                change_percent = total_individual + total_market + gravity + herd_effect + event_force + sniper_effect
                 
                 # Apply
                 stock.price *= (1 + change_percent)
                 stock.price = max(0.01, round(stock.price, 2)) 
+
 
                 # B. Generate New Prediction (Rarely)
                 if random.random() < 0.0005:

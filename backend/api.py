@@ -7,7 +7,7 @@ import json
 import random
 
 from database import get_session, engine
-from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet, Friendship
+from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet, Friendship, UserDailySnapshot, SlotSpin
 from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -135,13 +135,14 @@ def get_leaderboard(session: Session = Depends(get_session)):
         
         net_worth = user.balance + stock_value
         leaderboard.append({
-            "username": user.username,
+            "username": user.nickname or user.username,  # 優先顯示暱稱
             "balance": user.balance,
             "net_worth": net_worth
         })
     
     leaderboard.sort(key=lambda x: x["net_worth"], reverse=True)
     return leaderboard[:10]
+
 
 @router.get("/stocks")
 @router.get("/stocks")
@@ -791,4 +792,156 @@ def get_friends_leaderboard(current_user: User = Depends(get_current_user), sess
         entry["rank"] = i + 1
     
     return leaderboard
+
+# --- 個人資料 API ---
+
+@router.get("/profile")
+def get_profile(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """取得個人資料（包含暱稱、資產統計、賭場統計等）"""
+    # 計算股票市值
+    stocks = session.exec(select(Stock)).all()
+    stock_map = {s.id: s.price for s in stocks}
+    portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == current_user.id)).all()
+    stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+    
+    # 計算已實現損益
+    transactions = session.exec(select(Transaction).where(Transaction.user_id == current_user.id)).all()
+    realized_pnl = sum(t.profit or 0 for t in transactions)
+    
+    # 計算未實現損益
+    unrealized_pnl = 0
+    for p in portfolios:
+        if p.quantity > 0:
+            current_price = stock_map.get(p.stock_id, 0)
+            unrealized_pnl += (current_price - p.average_cost) * p.quantity
+    
+    # 賭場統計
+    bets = session.exec(select(Bet).where(Bet.user_id == current_user.id)).all()
+    race_stats = {
+        "total_bets": len(bets),
+        "total_wagered": sum(b.amount for b in bets),
+        "total_won": sum(b.payout for b in bets if b.result == "WON"),
+        "total_lost": sum(b.amount for b in bets if b.result == "LOST"),
+        "wins": len([b for b in bets if b.result == "WON"]),
+        "losses": len([b for b in bets if b.result == "LOST"])
+    }
+    race_stats["net_profit"] = race_stats["total_won"] - race_stats["total_wagered"]
+    
+    spins = session.exec(select(SlotSpin).where(SlotSpin.user_id == current_user.id)).all()
+    slots_stats = {
+        "total_spins": len(spins),
+        "total_wagered": sum(s.bet_amount for s in spins),
+        "total_won": sum(s.payout for s in spins),
+    }
+    slots_stats["net_profit"] = slots_stats["total_won"] - slots_stats["total_wagered"]
+    
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "nickname": current_user.nickname or current_user.username,
+        "nickname_updated_at": current_user.nickname_updated_at,
+        "balance": current_user.balance,
+        "stock_value": round(stock_value, 2),
+        "total_assets": round(current_user.balance + stock_value, 2),
+        "unrealized_pnl": round(unrealized_pnl, 2),
+        "realized_pnl": round(realized_pnl, 2),
+        "created_at": current_user.created_at,
+        "race_stats": race_stats,
+        "slots_stats": slots_stats
+    }
+
+@router.put("/profile/nickname")
+def update_nickname(body: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """更新暱稱（一週內只能改一次）"""
+    nickname = body.get("nickname", "").strip()
+    
+    # 驗證暱稱長度
+    if len(nickname) < 2 or len(nickname) > 16:
+        return {"status": "error", "message": "暱稱長度必須在 2-16 字元之間"}
+    
+    # 檢查一週限制
+    if current_user.nickname_updated_at:
+        time_diff = datetime.now() - current_user.nickname_updated_at
+        if time_diff < timedelta(days=7):
+            remaining_days = 7 - time_diff.days
+            remaining_hours = (timedelta(days=7) - time_diff).seconds // 3600
+            return {"status": "error", "message": f"還需等待 {remaining_days} 天 {remaining_hours} 小時才能修改暱稱"}
+    
+    # 更新暱稱
+    current_user.nickname = nickname
+    current_user.nickname_updated_at = datetime.now()
+    session.add(current_user)
+    session.commit()
+    
+    return {"status": "success", "message": "暱稱已更新", "nickname": nickname}
+
+@router.get("/profile/asset-history")
+def get_asset_history(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """取得資產走勢（每日記錄）"""
+    snapshots = session.exec(
+        select(UserDailySnapshot)
+        .where(UserDailySnapshot.user_id == current_user.id)
+        .order_by(UserDailySnapshot.date.asc())
+    ).all()
+    
+    return [
+        {
+            "date": s.date,
+            "total_assets": s.total_assets,
+            "cash": s.cash,
+            "stock_value": s.stock_value
+        }
+        for s in snapshots
+    ]
+
+@router.get("/race/friends-bets/{race_id}")
+def get_friends_bets(race_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """取得好友在某場比賽的下注資訊"""
+    # 取得好友列表
+    friendships = session.exec(
+        select(Friendship).where(
+            ((Friendship.user_id == current_user.id) | (Friendship.friend_id == current_user.id)),
+            Friendship.status == "ACCEPTED"
+        )
+    ).all()
+    
+    friend_ids = []
+    for f in friendships:
+        friend_id = f.friend_id if f.user_id == current_user.id else f.user_id
+        friend_ids.append(friend_id)
+    
+    if not friend_ids:
+        return []
+    
+    # 取得好友的下注
+    bets = session.exec(
+        select(Bet).where(
+            Bet.race_id == race_id,
+            Bet.user_id.in_(friend_ids)
+        )
+    ).all()
+    
+    # 取得用戶資訊
+    friends = session.exec(select(User).where(User.id.in_(friend_ids))).all()
+    user_map = {u.id: u for u in friends}
+    
+    # 取得馬匹名稱
+    horse_ids = list(set(b.horse_id for b in bets))
+    horses = session.exec(select(Horse).where(Horse.id.in_(horse_ids))).all() if horse_ids else []
+    horse_map = {h.id: h.name for h in horses}
+    
+    results = []
+    for bet in bets:
+        user = user_map.get(bet.user_id)
+        if user:
+            results.append({
+                "user_id": bet.user_id,
+                "username": user.nickname or user.username,
+                "horse_id": bet.horse_id,
+                "horse_name": horse_map.get(bet.horse_id, "Unknown"),
+                "amount": bet.amount,
+                "odds": bet.odds
+            })
+    
+    return results
 

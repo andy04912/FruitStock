@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { LineChart, Wallet, LogOut, Newspaper, Trophy, Menu, X, Gamepad2, Users } from 'lucide-react'; // Added Trophy, Gamepad2, Users
+import { LineChart, Wallet, LogOut, Newspaper, Trophy, Menu, X, Gamepad2, Users, User } from 'lucide-react'; // Added Trophy, Gamepad2, Users, User
 import { Button } from '../ui/components';
 
 export default function Navbar() {
@@ -51,12 +51,13 @@ export default function Navbar() {
 
     const navLinks = [
         { path: '/', label: '市場綜覽', icon: LineChart, color: 'text-cyan-400' },
-        { path: '/portfolio', label: '資產分佈', icon: Wallet, color: 'text-emerald-400' },
         { path: '/news', label: '新聞中心', icon: Newspaper, color: 'text-blue-400' },
         { path: '/leaderboard', label: '排行榜', icon: Trophy, color: 'text-yellow-400' }, 
         { path: '/race', label: '賽馬場', icon: Gamepad2, color: 'text-purple-400' },
         { path: '/slots', label: '老虎機', icon: Gamepad2, color: 'text-pink-400' },
+        { path: '/profile', label: '個人資料', icon: User, color: 'text-emerald-400' },
     ];
+
 
     const handleLogout = () => {
         logout();

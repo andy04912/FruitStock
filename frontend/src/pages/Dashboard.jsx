@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, Button } from "../components/ui/components";
@@ -104,9 +104,15 @@ const StockGrid = ({ stocks, watchlist, toggleWatchlist, emptyMessage }) => {
 export default function Dashboard() {
     const { marketData, isConnected } = useSocket();
     const { API_URL, token } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     
     const [watchlist, setWatchlist] = useState([]);
-    const [activeTab, setActiveTab] = useState("FRUIT");
+    
+    // 從 URL 參數讀取分頁狀態，預設為 FRUIT
+    const activeTab = searchParams.get("tab") || "FRUIT";
+    const setActiveTab = (tab) => {
+        setSearchParams({ tab }, { replace: true });
+    };
 
     useEffect(() => {
         if (!API_URL || !token) return; // Wait for token to be available

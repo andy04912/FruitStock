@@ -8,7 +8,6 @@ import Login from "./pages/Login";
 
 import Dashboard from "./pages/Dashboard";
 import StockDetailPage from "./pages/StockDetailPage";
-import PortfolioPage from "./pages/PortfolioPage";
 import NewsPage from "./pages/NewsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import RacePage from "./pages/RacePage";
@@ -40,11 +39,7 @@ function AppContent() {
                         <Route 
                             path="/stock/:id" 
                             element={<PrivateRoute><StockDetailPage /></PrivateRoute>} 
-                        />
-                        <Route 
-                            path="/portfolio" 
-                            element={<PrivateRoute><PortfolioPage /></PrivateRoute>} 
-                        />
+                        />                        
                         <Route 
                             path="/news" 
                             element={<PrivateRoute><NewsPage /></PrivateRoute>} 

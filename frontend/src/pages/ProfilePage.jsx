@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
@@ -309,7 +310,7 @@ export default function ProfilePage() {
                                     <TrendingUp className="h-4 w-4" />
                                     未實現損益
                                 </div>
-                                <div className={`text-xl font-bold ${profile?.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                <div className={`text-xl font-bold ${profile?.unrealized_pnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                     {formatMoney(profile?.unrealized_pnl)}
                                 </div>
                             </CardContent>
@@ -320,7 +321,7 @@ export default function ProfilePage() {
                                     <History className="h-4 w-4" />
                                     已實現損益
                                 </div>
-                                <div className={`text-xl font-bold ${profile?.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                <div className={`text-xl font-bold ${profile?.realized_pnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                     {formatMoney(profile?.realized_pnl)}
                                 </div>
                             </CardContent>
@@ -339,12 +340,12 @@ export default function ProfilePage() {
                                     {enrichedHoldings.slice(0, 5).map(h => (
                                         <div key={h.stock_id} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
                                             <div>
-                                                <span className="font-bold">{h.symbol}</span>
+                                                <Link to={`/stock/${h.stock_id}`} className="font-bold hover:text-emerald-400 transition-colors">{h.symbol}</Link>
                                                 <span className="text-zinc-400 ml-2 text-sm">{h.quantity} 股</span>
                                             </div>
                                             <div className="text-right">
                                                 <div className="font-mono">{formatMoney(h.marketValue)}</div>
-                                                <div className={`text-sm ${h.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                <div className={`text-sm ${h.unrealizedPnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                                     {formatPercent(h.unrealizedPct)}
                                                 </div>
                                             </div>
@@ -409,16 +410,18 @@ export default function ProfilePage() {
                                         </thead>
                                         <tbody>
                                             {enrichedHoldings.map(h => (
-                                                <tr key={h.stock_id} className="border-b border-zinc-800">
+                                                <tr key={h.stock_id} className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors">
                                                     <td className="py-3">
-                                                        <span className="font-bold">{h.symbol}</span>
-                                                        <span className="text-zinc-500 text-xs block md:inline md:ml-2">{h.name}</span>
+                                                        <Link to={`/stock/${h.stock_id}`} className="hover:text-emerald-400 transition-colors">
+                                                            <span className="font-bold">{h.symbol}</span>
+                                                            <span className="text-zinc-500 text-xs block md:inline md:ml-2">{h.name}</span>
+                                                        </Link>
                                                     </td>
                                                     <td className="text-right py-3">{h.quantity}</td>
                                                     <td className="text-right py-3 hidden md:table-cell">${h.average_cost.toFixed(2)}</td>
                                                     <td className="text-right py-3 hidden md:table-cell">${h.currentPrice.toFixed(2)}</td>
                                                     <td className="text-right py-3 font-mono">{formatMoney(h.marketValue)}</td>
-                                                    <td className={`text-right py-3 font-mono ${h.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    <td className={`text-right py-3 font-mono ${h.unrealizedPnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                                         {formatMoney(h.unrealizedPnl)}
                                                         <span className="text-xs block">{formatPercent(h.unrealizedPct)}</span>
                                                     </td>

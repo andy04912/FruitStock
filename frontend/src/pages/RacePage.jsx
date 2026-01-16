@@ -3,7 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Badge } from "../components/ui/components";
 import { toast } from "sonner";
-import { Timer, Trophy, DollarSign, History, Users } from "lucide-react";
+import { Timer, Trophy, DollarSign, History, Users, ClipboardCheck } from "lucide-react";
 import { sounds } from "../utils/sound";
 
 export default function RacePage() {
@@ -15,7 +15,6 @@ export default function RacePage() {
     const [betting, setBetting] = useState(false);
     const [history, setHistory] = useState([]);
     const [friendsBets, setFriendsBets] = useState([]);
-    const [showFriendsBets, setShowFriendsBets] = useState(false);
     
     // Animation State
     const [positions, setPositions] = useState({}); // { horse_id: percentage }
@@ -214,24 +213,29 @@ export default function RacePage() {
              <div className="flex flex-col gap-6">
                 {/* Header */}
                 <Card className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-yellow-500/20">
-                    <CardHeader>
-                        <CardTitle className="flex justify-between items-center text-yellow-500">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex md:flex-row justify-between items-center gap-3 text-yellow-500">
                             <div className="flex items-center gap-2">
-                                <Trophy className="h-6 w-6" />
-                                <span>皇家賽馬場 (Royal Racecourse)</span>
+                                <Trophy className="h-5 w-5 md:h-6 md:w-6" />
+                                <span className="text-base md:text-lg">皇家賽馬場</span>
                             </div>
-                            <div className="flex items-center gap-4 bg-black/30 px-4 py-2 rounded-full border border-yellow-500/30">
+                            <div className="flex items-center gap-3 bg-black/30 px-3  rounded-full border border-yellow-500/30 text-sm">
                                 <span className={isBettingOpen ? "text-green-400 animate-pulse" : "text-red-400"}>
-                                    {isBettingOpen ? "開放下注中" : isRunning ? "比賽進行中" : isFinished ? "比賽結束" : "準備中"}
+                                    {isBettingOpen ? "開放下注" : isRunning ? "比賽中" : isFinished ? "已結束" : "準備中"}
                                 </span>
                                 {isBettingOpen && (
-                                    <span className="font-mono text-xl text-white">
+                                    <span className="font-mono text-lg text-white">
                                         ⏱ {getCountdown()}
                                     </span>
                                 )}
                             </div>
                         </CardTitle>
+                        <div className="flex justify-between items-center">
+                                    <span className="text-slate-400">錢包餘額</span>
+                                    <span className="font-bold text-emerald-400 font-mono text-xl">${user?.balance?.toFixed(2)}</span>
+                                </div>
                     </CardHeader>
+                    
                 </Card>
 
                 <div className="flex flex-col lg:flex-row gap-6">
@@ -319,50 +323,162 @@ export default function RacePage() {
                                 <CardTitle>參賽馬匹一覽</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {race?.participants?.map((horse) => {
-                                        const isSelected = selectedHorse === horse.horse_id;
+                                        const isExpanded = selectedHorse === horse.horse_id;
                                         const myBets = race.user_bets?.filter(b => b.horse_id === horse.horse_id);
                                         const totalBet = myBets?.reduce((sum, b) => sum + b.amount, 0) || 0;
+                                        
+                                        // 該馬的好友投注 - 合併同一位好友的投注
+                                        const horseFriendsBets = friendsBets.filter(b => b.horse_id === horse.horse_id);
+                                        const mergedFriendsBets = Object.values(
+                                            horseFriendsBets.reduce((acc, bet) => {
+                                                if (acc[bet.username]) {
+                                                    acc[bet.username].amount += bet.amount;
+                                                } else {
+                                                    acc[bet.username] = { ...bet };
+                                                }
+                                                return acc;
+                                            }, {})
+                                        );
+                                        const displayFriends = mergedFriendsBets.slice(0, 5);
+                                        const extraFriendsCount = mergedFriendsBets.length - 5;
                                         
                                         return (
                                             <div 
                                                 key={horse.horse_id}
-                                                className={`p-3 border rounded-lg cursor-pointer transition-all hover:bg-slate-800/50 ${isSelected ? 'border-yellow-500 bg-yellow-900/10 ring-1 ring-yellow-500/50' : 'border-slate-700'}`}
-                                                onClick={() => isBettingOpen && setSelectedHorse(horse.horse_id)}
+                                                className={`border rounded-lg transition-all duration-300 ${isExpanded ? 'border-yellow-500 bg-yellow-900/10 ring-1 ring-yellow-500/50' : 'border-slate-700 hover:border-slate-600'}`}
                                             >
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <Badge variant="outline" className="h-6 w-6 flex items-center justify-center rounded-full p-0 bg-slate-800 text-xs font-mono text-slate-400">
-                                                            {horse.lane}
-                                                        </Badge>
-                                                        <span className="font-bold text-sm truncate max-w-[80px] text-ellipsis text-slate-200" title={horse.name}>{horse.name}</span>
+                                                {/* 馬匹主資訊 - 可點擊 */}
+                                                <div 
+                                                    className="p-3 cursor-pointer"
+                                                    onClick={() => isBettingOpen && setSelectedHorse(isExpanded ? null : horse.horse_id)}
+                                                >
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge variant="outline" className="h-6 w-6 flex items-center justify-center rounded-full p-0 bg-slate-800 text-xs font-mono text-slate-400">
+                                                                {horse.lane}
+                                                            </Badge>
+                                                            <span className="font-bold text-sm truncate max-w-[100px] text-ellipsis text-slate-200" title={horse.name}>{horse.name}</span>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-xl font-mono text-yellow-400 font-bold">x{horse.odds}</div>
+                                                            <div className="text-xs text-slate-500">賠率</div>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <div className="text-xl font-mono text-yellow-400 font-bold">x{horse.odds}</div>
-                                                        <div className="text-xs text-slate-500">賠率</div>
-                                                    </div>
+                                                    
+                                                     <div className="space-y-1 mt-1">
+                                                        <div className="flex justify-between text-xs text-slate-400">
+                                                            <span>綜合素質</span>
+                                                            <span className="font-mono text-slate-500">{Math.round(horse.score)}</span>
+                                                        </div>
+                                                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className={`h-full rounded-full ${isExpanded ? "bg-yellow-500" : "bg-blue-500"}`} 
+                                                                style={{ width: `${Math.min(100, horse.score / 2.5)}%` }} 
+                                                            ></div>
+                                                        </div>
+                                                     </div>
+
+                                                     {totalBet > 0 && (
+                                                         <div className="mt-2 bg-green-900/20 text-green-400 px-2 py-1 rounded text-[10px] flex items-center justify-center gap-1 border border-green-500/20 font-bold">
+                                                             <DollarSign className="w-3 h-3" />
+                                                             已下注: ${totalBet}
+                                                         </div>
+                                                     )}
+                                                     
+                                                     {/* 好友投注摘要（收合時也顯示詳情） */}
+                                                     {!isExpanded && horseFriendsBets.length > 0 && (
+                                                         <div className="mt-2 bg-purple-950/30 rounded p-2 border border-purple-500/20">
+                                                             <div className="text-[10px] text-purple-400 font-bold mb-1 flex items-center gap-1">
+                                                                 <Users className="w-3 h-3" />
+                                                                 好友投注
+                                                             </div>
+                                                             <div className="space-y-0.5">
+                                                                 {displayFriends.map((bet, idx) => (
+                                                                     <div key={idx} className="flex justify-between text-[10px]">
+                                                                         <span className="text-slate-400 truncate max-w-[80px]">{bet.username}</span>
+                                                                         <span className="font-mono text-yellow-400">${bet.amount}</span>
+                                                                     </div>
+                                                                 ))}
+                                                                 {extraFriendsCount > 0 && (
+                                                                     <div className="text-[10px] text-purple-400/70 text-center pt-0.5">
+                                                                         +{extraFriendsCount} 位好友
+                                                                     </div>
+                                                                 )}
+                                                             </div>
+                                                         </div>
+                                                     )}
                                                 </div>
                                                 
-                                                 <div className="space-y-1 mt-1">
-                                                    <div className="flex justify-between text-xs text-slate-400">
-                                                        <span>綜合素質</span>
-                                                        <span className="font-mono text-slate-500">{Math.round(horse.score)}</span>
+                                                {/* 展開區域 - 下注 + 好友投注 */}
+                                                <div 
+                                                    className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}
+                                                >
+                                                    <div className="px-3 pb-3 space-y-3 border-t border-slate-700/50 pt-3">
+                                                        {/* 下注區域 */}
+                                                        <div className="space-y-2">
+                                                            <div className="flex gap-2">
+                                                                {[100, 500, 1000].map(amt => (
+                                                                    <Button 
+                                                                        key={amt} 
+                                                                        variant="outline" 
+                                                                        size="sm"
+                                                                        onClick={(e) => { e.stopPropagation(); setBetAmount(amt); }}
+                                                                        className={`flex-1 text-xs transition-all ${betAmount === amt ? "border-yellow-500 text-yellow-500 bg-yellow-500/10" : "hover:border-slate-500"}`}
+                                                                    >
+                                                                        ${amt}
+                                                                    </Button>
+                                                                ))}
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <div className="relative flex-1">
+                                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
+                                                                    <Input 
+                                                                        type="number" 
+                                                                        value={betAmount}
+                                                                        onChange={(e) => setBetAmount(parseInt(e.target.value) || 0)}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        className="font-mono text-sm pl-5 h-9"
+                                                                    />
+                                                                </div>
+                                                                <Button 
+                                                                    className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-9 px-4"
+                                                                    disabled={betting || betAmount > user?.balance || betAmount <= 0}
+                                                                    onClick={(e) => { e.stopPropagation(); handleBet(); }}
+                                                                >
+                                                                    {betting ? "..." : "下注"}
+                                                                </Button>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500 text-center">
+                                                                可贏: <span className="text-yellow-400 font-mono">${(betAmount * horse.odds).toFixed(0)}</span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* 好友投注詳情 */}
+                                                        {horseFriendsBets.length > 0 && (
+                                                            <div className="bg-purple-950/30 rounded-lg p-2 border border-purple-500/20">
+                                                                <div className="text-[10px] text-purple-400 font-bold mb-2 flex items-center gap-1">
+                                                                    <Users className="w-3 h-3" />
+                                                                    好友投注
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {displayFriends.map((bet, idx) => (
+                                                                        <div key={idx} className="flex justify-between text-xs">
+                                                                            <span className="text-slate-300 truncate max-w-[100px]">{bet.username}</span>
+                                                                            <span className="font-mono text-yellow-400">${bet.amount}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                    {extraFriendsCount > 0 && (
+                                                                        <div className="text-[10px] text-purple-400/70 text-center pt-1">
+                                                                            還有 {extraFriendsCount} 位好友投注
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                                                        <div 
-                                                            className={`h-full rounded-full ${isSelected ? "bg-yellow-500" : "bg-blue-500"}`} 
-                                                            style={{ width: `${Math.min(100, horse.score / 2.5)}%` }} 
-                                                        ></div>
-                                                    </div>
-                                                 </div>
-
-                                                 {totalBet > 0 && (
-                                                     <div className="mt-2 bg-green-900/20 text-green-400 px-2 py-1 rounded text-[10px] flex items-center justify-center gap-1 border border-green-500/20 font-bold">
-                                                         <DollarSign className="w-3 h-3" />
-                                                         已下注: ${totalBet}
-                                                     </div>
-                                                 )}
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -371,76 +487,10 @@ export default function RacePage() {
                         </Card>
                     </div>
 
-                    {/* Right Panel: Betting Slip & History */}
+                    {/* Right Panel: Balance & History */}
                     <div className="w-full lg:w-[350px] space-y-6">
-                        {/* Betting Control */}
-                        <Card className={`border-l-4 ${isBettingOpen ? 'border-l-green-500' : 'border-l-red-500'}`}>
-                            <CardHeader>
-                                <CardTitle className="text-lg">下注單 (Betting Slip)</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex justify-between text-sm">
-                                    <span>錢包餘額</span>
-                                    <span className="font-bold text-emerald-400 font-mono text-base">${user?.balance?.toFixed(2)}</span>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                    <label className="text-sm text-slate-400">選擇馬匹</label>
-                                    <div className="p-3 bg-slate-900 rounded border border-slate-700 min-h-[44px] flex items-center shadow-inner">
-                                        {selectedHorse ? (
-                                            <span className="font-bold text-yellow-500 flex items-center gap-2">
-                                                <span className="text-xl">🐎</span>
-                                                {race?.participants.find(p => p.horse_id === selectedHorse)?.name}
-                                            </span>
-                                        ) : (
-                                            <span className="text-slate-600 italic text-sm">請從左側點選要下注的馬匹...</span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-sm text-slate-400">下注金額</label>
-                                    <div className="flex gap-2">
-                                        {[100, 500, 1000].map(amt => (
-                                            <Button 
-                                                key={amt} 
-                                                variant="outline" 
-                                                size="sm"
-                                                onClick={() => setBetAmount(amt)}
-                                                className={`flex-1 transition-all ${betAmount === amt ? "border-yellow-500 text-yellow-500 bg-yellow-500/10" : "hover:border-slate-500"}`}
-                                            >
-                                                ${amt}
-                                            </Button>
-                                        ))}
-                                    </div>
-                                    <div className="relative">
-                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
-                                         <Input 
-                                            type="number" 
-                                            value={betAmount}
-                                            onChange={(e) => setBetAmount(parseInt(e.target.value) || 0)}
-                                            className="font-mono text-lg pl-6"
-                                        />
-                                    </div>
-                                </div>
-
-                                <Button 
-                                    className={`w-full font-bold h-12 text-md shadow-lg transition-all ${isBettingOpen ? "bg-yellow-500 hover:bg-yellow-400 text-black hover:scale-[1.02]" : "bg-slate-700 text-slate-400"}`}
-                                    disabled={!isBettingOpen || !selectedHorse || betting || betAmount > user.balance}
-                                    onClick={handleBet}
-                                >
-                                    {isBettingOpen ? "確認下注" : "暫停下注"}
-                                </Button>
-                                
-                                {!isBettingOpen && race && (
-                                    <div className="bg-slate-900/50 p-2 rounded text-center">
-                                        <p className="text-xs text-red-400">
-                                            {isRunning ? "🏁 比賽進行中，下注已截止" : "🛑 已封盤 / 等待下一場"}
-                                        </p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                        
+                        
 
                         {/* 當輪統計 */}
                         {race?.user_bets?.length > 0 && (
@@ -484,42 +534,6 @@ export default function RacePage() {
                                         );
                                     })()}
                                 </CardContent>
-                            </Card>
-                        )}
-
-                        {/* 好友投注 */}
-                        {friendsBets.length > 0 && (
-                            <Card className="border-purple-500/20 bg-purple-950/20">
-                                <CardHeader className="pb-2">
-                                    <CardTitle 
-                                        className="text-sm flex items-center gap-2 cursor-pointer"
-                                        onClick={() => setShowFriendsBets(!showFriendsBets)}
-                                    >
-                                        <Users className="h-4 w-4" />
-                                        好友投注 ({friendsBets.length})
-                                        <span className="text-xs ml-auto">{showFriendsBets ? '▲' : '▼'}</span>
-                                    </CardTitle>
-                                </CardHeader>
-                                {showFriendsBets && (
-                                    <CardContent>
-                                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                                            {friendsBets.map((bet, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-2 bg-slate-900/50 rounded text-sm">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-purple-600/30 flex items-center justify-center text-[10px] text-purple-300">
-                                                            {bet.username?.charAt(0).toUpperCase()}
-                                                        </div>
-                                                        <span className="font-medium truncate max-w-[80px]">{bet.username}</span>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className="text-[10px] text-slate-400">{bet.horse_name}</div>
-                                                        <div className="font-mono text-yellow-400">${bet.amount}</div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </CardContent>
-                                )}
                             </Card>
                         )}
 

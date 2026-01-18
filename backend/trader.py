@@ -18,17 +18,27 @@ class Trader:
             self.session.add(portfolio) # Add to session but commit later
         return portfolio
 
-    def buy_stock(self, user: User, stock_id: int, quantity: int):
+    def buy_stock(self, user: User, stock_id: int, quantity: int, live_price: float = None):
         if quantity <= 0:
             return {"status": "error", "message": "Quantity must be positive"}
             
         stock = self.session.get(Stock, stock_id)
         if not stock:
             return {"status": "error", "message": "Stock not found"}
+        
+        # 優先使用即時價格，否則用 DB 價格
+        price = live_price if live_price and live_price > 0 else stock.price
             
-        cost = stock.price * quantity
-        if user.balance < cost:
+        cost = price * quantity
+        
+        # 餘額容錯機制：允許 1% 誤差（解決 MAX 按鈕競態問題）
+        tolerance = cost * 0.01
+        if user.balance < cost - tolerance:
             return {"status": "error", "message": "Insufficient funds"}
+        
+        # 如果餘額差一點點，調整為全部餘額
+        if user.balance < cost:
+            cost = user.balance
             
         # Update Balance
         user.balance -= cost
@@ -56,14 +66,14 @@ class Trader:
             # If we flipped to long
             if remaining_buy > 0:
                 portfolio.quantity += remaining_buy
-                portfolio.average_cost = stock.price # New position cost
+                portfolio.average_cost = price # New position cost
         
-        # Record Transaction
+        # Record Transaction (使用實際成交價格)
         tx = Transaction(
             user_id=user.id,
             stock_id=stock_id,
             type=TransactionType.BUY,
-            price=stock.price,
+            price=price,
             quantity=quantity,
             timestamp=datetime.utcnow()
         )
@@ -73,13 +83,16 @@ class Trader:
         self.session.commit()
         return tx
 
-    def sell_stock(self, user: User, stock_id: int, quantity: int):
+    def sell_stock(self, user: User, stock_id: int, quantity: int, live_price: float = None):
         if quantity <= 0:
             return {"status": "error", "message": "Quantity must be positive"}
 
         stock = self.session.get(Stock, stock_id)
         if not stock:
             return {"status": "error", "message": "Stock not found"}
+        
+        # 優先使用即時價格，否則用 DB 價格
+        price = live_price if live_price and live_price > 0 else stock.price
             
         portfolio = self.get_portfolio_item(user.id, stock_id)
         
@@ -89,7 +102,7 @@ class Trader:
         # If selling more than owned, it becomes short.
         # Check current quantity.
         
-        proceeds = stock.price * quantity
+        proceeds = price * quantity
         
         if portfolio.quantity < quantity:
             return {"status": "error", "message": "持股不足，無法賣出 (Insufficient shares)"}
@@ -98,16 +111,16 @@ class Trader:
         portfolio.quantity -= quantity
         user.balance += proceeds
             
-        # Calculate Realized PnL
+        # Calculate Realized PnL (使用即時價格)
         # Profit = (Sell Price - Average Cost) * Quantity
-        realized_pnl = (stock.price - portfolio.average_cost) * quantity
+        realized_pnl = (price - portfolio.average_cost) * quantity
             
         # Record Transaction
         tx = Transaction(
             user_id=user.id,
             stock_id=stock_id,
             type=TransactionType.SELL,
-            price=stock.price,
+            price=price,
             quantity=quantity,
             profit=realized_pnl,
             timestamp=datetime.utcnow()

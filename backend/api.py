@@ -84,14 +84,44 @@ def get_portfolio(current_user: User = Depends(get_current_user), session: Sessi
     return portfolios
 
 @router.post("/trade/buy")
-def buy_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+async def buy_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # 嘗試從 Redis 取得即時價格
+    live_price = None
+    redis = await get_redis()
+    if redis:
+        try:
+            cached = await redis.get("market_stocks")
+            if cached:
+                stocks_data = json.loads(cached)
+                for s in stocks_data:
+                    if s.get("id") == stock_id:
+                        live_price = float(s.get("price", 0))
+                        break
+        except Exception:
+            pass
+    
     trader = Trader(session)
-    return trader.buy_stock(current_user, stock_id, quantity)
+    return trader.buy_stock(current_user, stock_id, quantity, live_price=live_price)
 
 @router.post("/trade/sell")
-def sell_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+async def sell_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # 嘗試從 Redis 取得即時價格
+    live_price = None
+    redis = await get_redis()
+    if redis:
+        try:
+            cached = await redis.get("market_stocks")
+            if cached:
+                stocks_data = json.loads(cached)
+                for s in stocks_data:
+                    if s.get("id") == stock_id:
+                        live_price = float(s.get("price", 0))
+                        break
+        except Exception:
+            pass
+    
     trader = Trader(session)
-    return trader.sell_stock(current_user, stock_id, quantity)
+    return trader.sell_stock(current_user, stock_id, quantity, live_price=live_price)
 
 @router.post("/bonus/claim")
 def claim_daily_bonus(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):

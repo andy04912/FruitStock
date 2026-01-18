@@ -286,28 +286,48 @@ class MarketEngine:
                     herd_direction = random.choice([1, -1])
                     herd_effect = herd_direction * random.uniform(0.0003, 0.0008)
                 
-                # 6. 基準價緩慢漂移（形成長期趨勢）
-                base_drift = random.gauss(0, 0.0002)
+                # 6. 基準價動態漂移（形成長期趨勢，增強隨機性）
+                # 增強漂移幅度，讓基準價更動態
+                base_drift = random.gauss(0, 0.0008)  # 從 0.0002 增加到 0.0008
                 if stock.symbol not in self.base_prices:
                     self.base_prices[stock.symbol] = base_price
                 self.base_prices[stock.symbol] *= (1 + base_drift)
+                
+                # 小機率重設基準價為當前價格（打破舊區間）
+                if random.random() < 0.002:  # 0.2% 機率
+                    self.base_prices[stock.symbol] = stock.price
+                    print(f"[Market] 📊 {stock.name} 基準價重設為 ${stock.price:.2f}")
+                
                 self.base_prices[stock.symbol] = max(1.0, self.base_prices[stock.symbol])
                 base_price = self.base_prices[stock.symbol]
                 
                 # 7. 重力回歸（防止價格偏離太遠）
+                # 但加入隨機變異，讓觸發點不可預測
                 deviation = (stock.price - base_price) / base_price
                 gravity = 0.0
                 
-                is_breakthrough = (market_regime == "CHAOS") or (random.random() < 0.02)
+                # 重力觸發點隨機化：±15% 變異
+                gravity_threshold_high = 0.50 * random.uniform(0.85, 1.20)  # 42.5% ~ 60%
+                gravity_threshold_mid = 0.35 * random.uniform(0.85, 1.20)   # 29.75% ~ 42%
                 
-                if is_breakthrough:
+                # 假突破機制：10% 機率暫時關閉重力
+                is_breakthrough = (market_regime == "CHAOS") or (random.random() < 0.10)
+                
+                # 假突破後快速拉回：5% 機率觸發強力回拉
+                sudden_reversal = random.random() < 0.05 and abs(deviation) > 0.25
+                
+                if is_breakthrough and not sudden_reversal:
                     gravity = 0
                     if abs(deviation) > 0.3:
                         print(f"[Market] 🚀 {stock.name} 突破中！偏離 {deviation*100:.1f}%")
-                elif abs(deviation) > 0.5:
-                    gravity = -deviation * 0.008
-                elif abs(deviation) > 0.35:
-                    gravity = -deviation * 0.004
+                elif sudden_reversal:
+                    # 假突破後強力回拉
+                    gravity = -deviation * 0.015
+                    print(f"[Market] ⚡ {stock.name} 假突破！快速回拉中")
+                elif abs(deviation) > gravity_threshold_high:
+                    gravity = -deviation * random.uniform(0.006, 0.010)  # 隨機強度
+                elif abs(deviation) > gravity_threshold_mid:
+                    gravity = -deviation * random.uniform(0.002, 0.006)  # 隨機強度
                 
                 # ROOT 類別更穩定
                 if category == 'ROOT':

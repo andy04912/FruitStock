@@ -208,3 +208,45 @@ class SystemConfig(SQLModel, table=True):
     category: str = Field(default="general")  # 分類：market, race, slots, user
     updated_at: datetime = Field(default_factory=datetime.now)
 
+# ============ 21 點相關模型 ============
+
+class BlackjackRoom(SQLModel, table=True):
+    """21 點房間"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    owner_id: int = Field(foreign_key="user.id")  # 開房者
+    name: str = Field(max_length=32)  # 房間名稱
+    min_bet: float = Field(default=1000)  # 最低下注
+    max_bet: Optional[float] = Field(default=None)  # 最高下注（None = 無上限）
+    max_seats: int = Field(default=6)  # 座位數 1-6
+    status: str = Field(default="WAITING")  # WAITING, BETTING, PLAYING, FINISHED
+    current_seat: int = Field(default=0)  # 目前輪到哪個座位
+    deck: str = Field(default="[]")  # 剩餘牌組 JSON
+    dealer_cards: str = Field(default="[]")  # 莊家牌 JSON
+    created_at: datetime = Field(default_factory=datetime.now)
+
+class BlackjackHand(SQLModel, table=True):
+    """21 點玩家手牌"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_id: int = Field(foreign_key="blackjackroom.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    seat: int = Field(default=1)  # 座位號 1-6
+    bet_amount: float = Field(default=0)
+    cards: str = Field(default="[]")  # 玩家牌 JSON
+    status: str = Field(default="WAITING")  # WAITING, BETTING, PLAYING, STAND, BUST, BLACKJACK, WIN, LOSE, PUSH
+    is_doubled: bool = Field(default=False)  # 是否雙倍
+    is_split: bool = Field(default=False)  # 是否分牌
+    payout: float = Field(default=0)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+class BlackjackHistory(SQLModel, table=True):
+    """21 點歷史紀錄"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    room_id: Optional[int] = None
+    bet_amount: float
+    result: str  # WIN, LOSE, BLACKJACK, PUSH, BUST
+    payout: float
+    player_cards: str  # JSON
+    dealer_cards: str  # JSON
+    created_at: datetime = Field(default_factory=datetime.now)
+

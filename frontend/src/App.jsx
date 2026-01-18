@@ -12,6 +12,7 @@ import NewsPage from "./pages/NewsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import RacePage from "./pages/RacePage";
 import SlotMachine from "./pages/SlotMachine";
+import BlackjackPage from "./pages/BlackjackPage";
 import AdminPage from "./pages/AdminPage";
 import ProfilePage from "./pages/ProfilePage";
 
@@ -55,6 +56,10 @@ function AppContent() {
                         <Route 
                             path="/slots" 
                             element={<PrivateRoute><SlotMachine /></PrivateRoute>} 
+                        />
+                        <Route 
+                            path="/blackjack" 
+                            element={<PrivateRoute><BlackjackPage /></PrivateRoute>} 
                         />
                         <Route 
                             path="/profile" 

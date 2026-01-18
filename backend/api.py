@@ -975,3 +975,48 @@ def get_friends_bets(race_id: int, current_user: User = Depends(get_current_user
     
     return results
 
+# ============ 21 點 API ============
+
+from blackjack_engine import BlackjackEngine
+blackjack_engine = BlackjackEngine(lambda: Session(engine))
+
+@router.post("/blackjack/start")
+def blackjack_start(bet_amount: float, current_user: User = Depends(get_current_user)):
+    """開始單人 21 點"""
+    return blackjack_engine.start_solo_game(current_user.id, bet_amount)
+
+@router.post("/blackjack/hit/{hand_id}")
+def blackjack_hit(hand_id: int, current_user: User = Depends(get_current_user)):
+    """要牌"""
+    return blackjack_engine.hit(hand_id)
+
+@router.post("/blackjack/stand/{hand_id}")
+def blackjack_stand(hand_id: int, current_user: User = Depends(get_current_user)):
+    """停牌"""
+    return blackjack_engine.stand(hand_id)
+
+@router.post("/blackjack/double/{hand_id}")
+def blackjack_double(hand_id: int, current_user: User = Depends(get_current_user)):
+    """雙倍下注"""
+    return blackjack_engine.double_down(hand_id)
+
+@router.post("/blackjack/create-room")
+def blackjack_create_room(
+    name: str, 
+    min_bet: float, 
+    max_bet: float = None, 
+    max_seats: int = 6,
+    current_user: User = Depends(get_current_user)
+):
+    """開設牌桌"""
+    return blackjack_engine.create_room(current_user.id, name, min_bet, max_bet, max_seats)
+
+@router.get("/blackjack/rooms")
+def blackjack_rooms():
+    """取得房間列表"""
+    return blackjack_engine.get_rooms()
+
+@router.get("/blackjack/history")
+def blackjack_history(current_user: User = Depends(get_current_user)):
+    """取得歷史紀錄"""
+    return blackjack_engine.get_history(current_user.id)

@@ -55,7 +55,8 @@ export default function Navbar() {
         { path: '/leaderboard', label: '排行榜', icon: Trophy, color: 'text-yellow-400' }, 
         { path: '/race', label: '賽馬場', icon: Gamepad2, color: 'text-purple-400' },
         { path: '/slots', label: '老虎機', icon: Gamepad2, color: 'text-pink-400' },
-        { path: '/profile', label: '個人資料', icon: User, color: 'text-emerald-400' },
+        { path: '/blackjack', label: '21點', icon: Gamepad2, color: 'text-emerald-400' },
+        { path: '/profile', label: '個人資料', icon: User, color: 'text-orange-400' },
     ];
 
 

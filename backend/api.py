@@ -378,6 +378,8 @@ def remove_watchlist(stock_id: int, current_user: User = Depends(get_current_use
         Watchlist.stock_id == stock_id
     )
     results = session.exec(statement).all()
+    for item in results:
+        session.delete(item)
     session.commit()
     return {"message": "Removed from watchlist"}
 
@@ -1006,10 +1008,11 @@ def blackjack_create_room(
     min_bet: float, 
     max_bet: float = None, 
     max_seats: int = 6,
+    player_dealer: bool = False,
     current_user: User = Depends(get_current_user)
 ):
-    """開設牌桌"""
-    return blackjack_engine.create_room(current_user.id, name, min_bet, max_bet, max_seats)
+    """開設牌桌（player_dealer=True 時房主當莊）"""
+    return blackjack_engine.create_room(current_user.id, name, min_bet, max_bet, max_seats, player_dealer)
 
 @router.get("/blackjack/rooms")
 def blackjack_rooms():
@@ -1020,3 +1023,95 @@ def blackjack_rooms():
 def blackjack_history(current_user: User = Depends(get_current_user)):
     """取得歷史紀錄"""
     return blackjack_engine.get_history(current_user.id)
+
+@router.get("/blackjack/my-room")
+def blackjack_my_room(current_user: User = Depends(get_current_user)):
+    """取得用戶當前所在房間"""
+    return blackjack_engine.get_my_room(current_user.id)
+
+# --- 多人房間 API ---
+
+@router.post("/blackjack/join/{room_id}")
+def blackjack_join(room_id: int, current_user: User = Depends(get_current_user)):
+    """加入房間"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.join_room(current_user.id, room_id)
+    if result.get("status") == "success":
+        room_state = blackjack_engine.get_room_state(room_id)
+        broadcast_room_state(room_id, room_state)
+    return result
+
+@router.post("/blackjack/leave/{room_id}")
+def blackjack_leave(room_id: int, current_user: User = Depends(get_current_user)):
+    """離開房間"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.leave_room(current_user.id, room_id)
+    if result.get("status") == "success":
+        # 如果房間還存在才廣播
+        room_state = blackjack_engine.get_room_state(room_id)
+        if room_state.get("status") == "success":
+            broadcast_room_state(room_id, room_state)
+    return result
+
+@router.post("/blackjack/bet/{room_id}")
+def blackjack_bet(room_id: int, bet_amount: float, current_user: User = Depends(get_current_user)):
+    """多人模式下注"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.place_bet(current_user.id, room_id, bet_amount)
+    if result.get("status") == "success":
+        room_state = blackjack_engine.get_room_state(room_id)
+        broadcast_room_state(room_id, room_state)
+    return result
+
+@router.get("/blackjack/room/{room_id}")
+def blackjack_room_state(room_id: int):
+    """取得房間狀態"""
+    return blackjack_engine.get_room_state(room_id)
+
+@router.post("/blackjack/start-round/{room_id}")
+def blackjack_start_round(room_id: int, current_user: User = Depends(get_current_user)):
+    """房主開始發牌"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.start_round(room_id, current_user.id)
+    if result.get("status") == "success":
+        broadcast_room_state(room_id, result)
+    return result
+
+@router.post("/blackjack/multi/hit/{hand_id}")
+def blackjack_multi_hit(hand_id: int, current_user: User = Depends(get_current_user)):
+    """多人模式要牌"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.multi_hit(hand_id, current_user.id)
+    if result.get("status") == "success" and result.get("room"):
+        broadcast_room_state(result["room"]["id"], result)
+    return result
+
+@router.post("/blackjack/multi/stand/{hand_id}")
+def blackjack_multi_stand(hand_id: int, current_user: User = Depends(get_current_user)):
+    """多人模式停牌"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.multi_stand(hand_id, current_user.id)
+    if result.get("status") == "success" and result.get("room"):
+        broadcast_room_state(result["room"]["id"], result)
+    return result
+
+@router.post("/blackjack/multi/double/{hand_id}")
+def blackjack_multi_double(hand_id: int, current_user: User = Depends(get_current_user)):
+    """多人模式雙倍下注"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.multi_double(hand_id, current_user.id)
+    if result.get("status") == "success" and result.get("room"):
+        broadcast_room_state(result["room"]["id"], result)
+    return result
+
+@router.post("/blackjack/reset/{room_id}")
+def blackjack_reset(room_id: int, current_user: User = Depends(get_current_user)):
+    """重置房間開始新一局"""
+    from blackjack_ws import broadcast_room_state
+    result = blackjack_engine.reset_room(room_id, current_user.id)
+    if result.get("status") == "success":
+        # 重新取得房間狀態並廣播
+        room_state = blackjack_engine.get_room_state(room_id)
+        broadcast_room_state(room_id, room_state)
+    return result
+

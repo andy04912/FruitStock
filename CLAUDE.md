@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Language Preference
+
+請使用**繁體中文**回覆使用者。
+
 ## Project Overview
 
 A stock market simulation platform with gambling features (horse racing, slots, blackjack). Users trade fictional food-themed stocks (fruits, meats, roots), participate in casino games, and compete on leaderboards.

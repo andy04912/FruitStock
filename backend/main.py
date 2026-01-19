@@ -64,12 +64,54 @@ class ConnectionManager:
             await self.send_to_local(message)
 
 manager = ConnectionManager()
+
+# Blackjack WebSocket Manager
+class BlackjackConnectionManager:
+    def __init__(self):
+        # {room_id: [websocket1, websocket2, ...]}
+        self.room_connections: dict = {}
+    
+    async def connect(self, room_id: int, websocket: WebSocket):
+        await websocket.accept()
+        if room_id not in self.room_connections:
+            self.room_connections[room_id] = []
+        self.room_connections[room_id].append(websocket)
+    
+    def disconnect(self, room_id: int, websocket: WebSocket):
+        if room_id in self.room_connections:
+            if websocket in self.room_connections[room_id]:
+                self.room_connections[room_id].remove(websocket)
+            if len(self.room_connections[room_id]) == 0:
+                del self.room_connections[room_id]
+    
+    async def broadcast_room(self, room_id: int, data: dict):
+        """廣播給房間所有連線"""
+        if room_id not in self.room_connections:
+            return
+        message = json.dumps(data)
+        dead_connections = []
+        for ws in self.room_connections[room_id]:
+            try:
+                await ws.send_text(message)
+            except Exception:
+                dead_connections.append(ws)
+        # 清理斷開的連線
+        for ws in dead_connections:
+            self.disconnect(room_id, ws)
+
+blackjack_manager = BlackjackConnectionManager()
+
 scheduler = AsyncIOScheduler()
 
 # Market Systems
 market_engine = MarketEngine(lambda: Session(engine))
 event_system = EventSystem(lambda: Session(engine))
 race_engine = RaceEngine(lambda: Session(engine))
+
+# Set up Blackjack WebSocket broadcast callback
+from blackjack_ws import set_broadcast_callback
+set_broadcast_callback(blackjack_manager.broadcast_room)
+
 
 def daily_asset_snapshot():
     """記錄所有用戶的每日資產快照（每天 00:00 執行）"""
@@ -204,6 +246,11 @@ async def redis_listener():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 設置 Blackjack WebSocket 事件循環
+    from blackjack_ws import set_broadcast_callback
+    loop = asyncio.get_running_loop()
+    set_broadcast_callback(blackjack_manager.broadcast_room, loop)
+    
     # Init Redis via Utils
     redis_client = await get_redis()
     
@@ -295,6 +342,24 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+@app.websocket("/api/ws/blackjack/{room_id}")
+async def blackjack_websocket(websocket: WebSocket, room_id: int):
+    """21 點房間 WebSocket 連線"""
+    from api import blackjack_engine
+    
+    await blackjack_manager.connect(room_id, websocket)
+    try:
+        # 連線時發送當前房間狀態
+        room_state = blackjack_engine.get_room_state(room_id)
+        await websocket.send_text(json.dumps(room_state))
+        
+        # 保持連線
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        blackjack_manager.disconnect(room_id, websocket)
+
 
 # --- New Endpoints ---
 

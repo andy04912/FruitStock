@@ -1,5 +1,6 @@
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
+from sqlalchemy import BigInteger, Column
 from datetime import datetime
 from enum import Enum
 
@@ -66,9 +67,9 @@ class Portfolio(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
     stock_id: int = Field(foreign_key="stock.id")
-    quantity: int = Field(default=0)
+    quantity: int = Field(default=0, sa_column=Column(BigInteger))
     average_cost: float = Field(default=0.0)
-    
+
     user: User = Relationship(back_populates="portfolios")
     stock: Stock = Relationship(back_populates="portfolios")
 
@@ -78,7 +79,7 @@ class Transaction(SQLModel, table=True):
     stock_id: int = Field(foreign_key="stock.id")
     type: TransactionType
     price: float
-    quantity: int
+    quantity: int = Field(sa_column=Column(BigInteger))
     profit: Optional[float] = Field(default=None) # Realized PnL for SELL/COVER
     timestamp: datetime = Field(default_factory=datetime.now)
     
@@ -218,6 +219,7 @@ class BlackjackRoom(SQLModel, table=True):
     min_bet: float = Field(default=1000)  # 最低下注
     max_bet: Optional[float] = Field(default=None)  # 最高下注（None = 無上限）
     max_seats: int = Field(default=6)  # 座位數 1-6
+    dealer_seat: int = Field(default=0)  # 莊家座位，0=系統當莊，>0=該座位玩家當莊
     status: str = Field(default="WAITING")  # WAITING, BETTING, PLAYING, FINISHED
     current_seat: int = Field(default=0)  # 目前輪到哪個座位
     deck: str = Field(default="[]")  # 剩餘牌組 JSON

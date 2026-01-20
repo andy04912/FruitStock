@@ -36,6 +36,12 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                 sounds.playError();
             } else {
                 onTrade();
+
+                // 顯示實際成交價格
+                const actualPrice = res.data.transaction?.price;
+                const actualQty = res.data.transaction?.quantity;
+                const profit = res.data.transaction?.profit;
+
                 const actionText = {
                     'buy': '買入',
                     'sell': '賣出',
@@ -43,7 +49,20 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     'cover': '回補'
                 }[type] || type;
 
-                toast.success(`${actionText}成功！ (${stock.name} x${quantity})`);
+                let message = `${actionText}成功！${stock.name} x${actualQty || quantity}`;
+
+                // 顯示實際成交價（如果與顯示價格不同）
+                if (actualPrice && Math.abs(actualPrice - stock.price) > 0.01) {
+                    message += ` @ $${actualPrice.toFixed(2)} (即時價格)`;
+                }
+
+                // 顯示損益（賣出/回補時）
+                if (profit !== undefined && profit !== null) {
+                    const profitText = profit >= 0 ? `+$${profit.toFixed(2)}` : `-$${Math.abs(profit).toFixed(2)}`;
+                    message += ` 損益: ${profitText}`;
+                }
+
+                toast.success(message, { duration: 4000 });
 
                 if (type === 'buy' || type === 'cover') {
                     sounds.playBuy();

@@ -86,7 +86,25 @@ class Trader:
         self.session.add(user)
         self.session.add(portfolio)
         self.session.commit()
-        return tx
+        self.session.refresh(tx)
+
+        # 返回詳細交易資訊（包含實際成交價）
+        return {
+            "status": "success",
+            "message": f"買入成功 {quantity} 股 @ ${price:.2f}",
+            "transaction": {
+                "id": tx.id,
+                "type": tx.type,
+                "price": price,  # 實際成交價
+                "quantity": quantity,
+                "timestamp": tx.timestamp.isoformat()
+            },
+            "balance": user.balance,
+            "portfolio": {
+                "quantity": portfolio.quantity,
+                "average_cost": portfolio.average_cost
+            }
+        }
 
     def sell_stock(self, user: User, stock_id: int, quantity: int, live_price: float = None):
         if quantity <= 0:
@@ -130,12 +148,31 @@ class Trader:
             profit=realized_pnl,
             timestamp=datetime.utcnow()
         )
-        
+
         self.session.add(tx)
         self.session.add(user)
         self.session.add(portfolio)
         self.session.commit()
-        return tx
+        self.session.refresh(tx)
+
+        # 返回詳細交易資訊（包含實際成交價）
+        return {
+            "status": "success",
+            "message": f"賣出成功 {quantity} 股 @ ${price:.2f}",
+            "transaction": {
+                "id": tx.id,
+                "type": tx.type,
+                "price": price,  # 實際成交價
+                "quantity": quantity,
+                "profit": realized_pnl,
+                "timestamp": tx.timestamp.isoformat()
+            },
+            "balance": user.balance,
+            "portfolio": {
+                "quantity": portfolio.quantity,
+                "average_cost": portfolio.average_cost
+            }
+        }
         
     def short_stock(self, user: User, stock_id: int, quantity: int, live_price: float = None):
         """
@@ -230,8 +267,26 @@ class Trader:
         self.session.add(user)
         self.session.add(portfolio)
         self.session.commit()
+        self.session.refresh(tx)
 
-        return tx
+        # 返回詳細交易資訊（包含實際成交價）
+        return {
+            "status": "success",
+            "message": f"做空成功 {quantity} 股 @ ${price:.2f}",
+            "transaction": {
+                "id": tx.id,
+                "type": tx.type,
+                "price": price,  # 實際成交價
+                "quantity": quantity,
+                "timestamp": tx.timestamp.isoformat()
+            },
+            "balance": user.balance,
+            "margin_locked": portfolio.margin_locked,
+            "portfolio": {
+                "quantity": portfolio.quantity,
+                "average_cost": portfolio.average_cost
+            }
+        }
 
     def cover_short(self, user: User, stock_id: int, quantity: int, live_price: float = None):
         """
@@ -319,5 +374,24 @@ class Trader:
         self.session.add(user)
         self.session.add(portfolio)
         self.session.commit()
+        self.session.refresh(tx)
 
-        return tx
+        # 返回詳細交易資訊（包含實際成交價）
+        return {
+            "status": "success",
+            "message": f"回補成功 {quantity} 股 @ ${price:.2f} (損益: ${realized_pnl:+.2f})",
+            "transaction": {
+                "id": tx.id,
+                "type": tx.type,
+                "price": price,  # 實際成交價
+                "quantity": quantity,
+                "profit": realized_pnl,
+                "timestamp": tx.timestamp.isoformat()
+            },
+            "balance": user.balance,
+            "margin_returned": margin_to_return,
+            "portfolio": {
+                "quantity": portfolio.quantity,
+                "average_cost": portfolio.average_cost
+            }
+        }

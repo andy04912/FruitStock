@@ -28,18 +28,23 @@ class Trader:
         
         # 優先使用即時價格，否則用 DB 價格
         price = live_price if live_price and live_price > 0 else stock.price
-            
+
         cost = price * quantity
-        
-        # 餘額容錯機制：允許 1% 誤差（解決 MAX 按鈕競態問題）
-        tolerance = cost * 0.01
+
+        # 餘額容錯機制：允許 3% 誤差（解決 MAX 按鈕競態問題和價格波動）
+        tolerance = cost * 0.03
         if user.balance < cost - tolerance:
             return {"status": "error", "message": "Insufficient funds"}
-        
-        # 如果餘額差一點點，調整為全部餘額
+
+        # 如果餘額不足，自動調整數量為能買的最大值
         if user.balance < cost:
-            cost = user.balance
-            
+            # 計算實際能買的數量（用完所有餘額）
+            actual_quantity = int(user.balance / price)
+            if actual_quantity < 1:
+                return {"status": "error", "message": "Insufficient funds"}
+            quantity = actual_quantity
+            cost = price * quantity
+
         # Update Balance
         user.balance -= cost
         

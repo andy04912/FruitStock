@@ -100,55 +100,90 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                 <div className="space-y-2">
                     <div className="flex justify-between items-center">
                         <label className=" px-2 text-sm">數量</label>
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="h-6 px-2 text-xs border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-900/20"
-                            onClick={() => {
-                                // Logic: If we have holdings, prioritize selling ALL holdings (User request: "Spot quantity")
-                                // If holding is 0 (or already set to holding), switch to Max Buyable
-                                if (holdingQuantity > 0 && quantity !== holdingQuantity) {
-                                    setQuantity(holdingQuantity);
-                                } else {
-                                    const maxBuy = Math.floor(user.balance / stock.price);
-                                    setQuantity(maxBuy > 0 ? maxBuy : 1);
-                                }
-                            }}
-                        >
-                            MAX
-                        </Button>
+                        <div className="flex gap-1">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 px-2 text-xs border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-900/20"
+                                onClick={() => {
+                                    if (isShortPosition) {
+                                        // 空頭倉位：MAX = 全部空單
+                                        setQuantity(absHolding);
+                                    } else if (holdingQuantity > 0) {
+                                        // 多頭倉位：MAX = 全部持股
+                                        setQuantity(holdingQuantity);
+                                    } else {
+                                        // 無倉位：MAX 買入（預留 2% 緩衝避免價格波動）
+                                        const maxBuy = Math.floor((user.balance * 0.98) / stock.price);
+                                        setQuantity(maxBuy > 0 ? maxBuy : 1);
+                                    }
+                                }}
+                            >
+                                MAX
+                            </Button>
+                            {!isShortPosition && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs border-orange-500/30 text-orange-400 hover:text-orange-300 hover:bg-orange-900/20"
+                                    onClick={() => {
+                                        // MAX 做空（30% 限額，預留 2% 緩衝）
+                                        const maxShortValue = user.balance * 0.3;
+                                        const maxShortQty = Math.floor((maxShortValue * 0.98) / (stock.price * 1.5));
+                                        setQuantity(maxShortQty > 0 ? maxShortQty : 1);
+                                    }}
+                                    title="最大做空數量（帳戶 30% 限額）"
+                                >
+                                    MAX⬇
+                                </Button>
+                            )}
+                        </div>
                     </div>
-                    <Input 
-                        type="number" 
-                        min="1" 
-                        value={quantity} 
+                    <Input
+                        type="number"
+                        min="1"
+                        value={quantity}
                         className="border border-blue-500/30 px-2 text-sm"
-                        onChange={(e) => setQuantity(parseInt(e.target.value) || 0)} 
+                        onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
                     />
                 </div>
-                
-                <div className="flex justify-between text-sm font-bold pt-2 border-t">
-                    <span>預估總額</span>
-                    <span>${(cost).toFixed(2)}</span>
-                </div>
+
+                {/* 預估金額顯示 */}
+                {!isShortPosition ? (
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-sm font-bold pt-2 border-t">
+                            <span>預估總額</span>
+                            <span>${cost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-zinc-400">
+                            <span>做空保證金</span>
+                            <span>${shortMargin.toFixed(2)}</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex justify-between text-sm font-bold pt-2 border-t">
+                        <span>回補成本</span>
+                        <span>${cost.toFixed(2)}</span>
+                    </div>
+                )}
 
                 {/* 根據倉位類型顯示不同按鈕 */}
                 {isShortPosition ? (
                     // 空頭倉位：只顯示回補按鈕
                     <div className="space-y-3">
                         <div className="text-xs text-orange-500 text-center bg-orange-500/10 p-2 rounded border border-orange-500/30">
-                            ⚠️ 您有空頭倉位，需先回補才能進行其他操作
+                            ⚠️ 您有 {absHolding} 股空單，需先回補才能進行其他操作
                         </div>
                         <Button
-                            className="bg-blue-600 hover:bg-blue-700 w-full"
+                            className="bg-blue-600 hover:bg-blue-700 w-full text-base py-6"
                             onClick={() => handleTrade('cover')}
                             disabled={loading || quantity > absHolding}
                         >
-                            回補空單 ({absHolding} 股)
+                            🔺 回補空單 ({absHolding} 股可回補)
                         </Button>
                         {quantity > absHolding && (
-                            <div className="text-xs text-red-500 text-center">
-                                回補數量不能超過空單數量
+                            <div className="text-xs text-red-500 text-center bg-red-500/10 p-2 rounded">
+                                回補數量不能超過空單數量 ({absHolding} 股)
                             </div>
                         )}
                     </div>
@@ -157,34 +192,43 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-2">
                             <Button
-                                className="bg-green-600 hover:bg-green-700 w-full"
+                                className="bg-green-600 hover:bg-green-700 w-full py-3"
                                 onClick={() => handleTrade('buy')}
                                 disabled={loading || !canBuy}
                             >
-                                買入
+                                買入 🟢
                             </Button>
                             <Button
-                                className="bg-red-600 hover:bg-red-700 w-full"
+                                className="bg-red-600 hover:bg-red-700 w-full py-3"
                                 onClick={() => handleTrade('sell')}
                                 disabled={loading || holdingQuantity <= 0}
                             >
-                                賣出
+                                賣出 🔴
                             </Button>
                         </div>
                         <Button
-                            className="bg-orange-600 hover:bg-orange-700 w-full border border-orange-400/30"
+                            className="bg-orange-600 hover:bg-orange-700 w-full border border-orange-400/30 py-3"
                             onClick={() => handleTrade('short')}
                             disabled={loading || !canShort}
                         >
-                            做空 ⬇️
+                            做空 ⬇️ (需保證金 ${shortMargin.toFixed(0)})
                         </Button>
-                        {!canShort && (
-                            <div className="text-xs text-orange-500 text-center bg-orange-500/10 p-2 rounded">
-                                做空需 150% 保證金 (${shortMargin.toFixed(2)})
+
+                        {/* 錯誤提示 */}
+                        {!canShort && quantity > 0 && (
+                            <div className="text-xs text-orange-500 text-center bg-orange-500/10 p-2 rounded border border-orange-500/30">
+                                💰 保證金不足：需要 ${shortMargin.toFixed(2)}，當前餘額 ${user.balance.toFixed(2)}
                             </div>
                         )}
-                        {!canBuy && !isShortPosition && (
-                            <div className="text-xs text-red-500 text-center">餘額不足</div>
+                        {!canBuy && !isShortPosition && quantity > 0 && (
+                            <div className="text-xs text-red-500 text-center bg-red-500/10 p-2 rounded">
+                                💰 餘額不足：需要 ${cost.toFixed(2)}，當前餘額 ${user.balance.toFixed(2)}
+                            </div>
+                        )}
+                        {holdingQuantity <= 0 && (
+                            <div className="text-xs text-zinc-500 text-center">
+                                💡 提示：點擊 MAX 快速計算最大可買/做空數量
+                            </div>
                         )}
                     </div>
                 )}

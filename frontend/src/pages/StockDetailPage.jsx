@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, Button, Input, Badge } from "
 import { toast } from "sonner";
 import { sounds } from "../utils/sound";
 import { Newspaper, TrendingUp } from "lucide-react";
+import { formatMoney, formatNumber, formatPrice, formatPercent } from "../utils/format";
 
 const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvgCost }) => {
     const [quantity, setQuantity] = useState(1);
@@ -49,17 +50,17 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     'cover': '回補'
                 }[type] || type;
 
-                let message = `${actionText}成功！${stock.name} x${actualQty || quantity}`;
+                let message = `${actionText}成功！${stock.name} x${formatNumber(actualQty || quantity)}`;
 
                 // 顯示實際成交價（如果與顯示價格不同）
                 if (actualPrice && Math.abs(actualPrice - stock.price) > 0.01) {
-                    message += ` @ $${actualPrice.toFixed(2)} (即時價格)`;
+                    message += ` @ ${formatPrice(actualPrice)} (即時價格)`;
                 }
 
                 // 顯示損益（賣出/回補時）
                 if (profit !== undefined && profit !== null) {
-                    const profitText = profit >= 0 ? `+$${profit.toFixed(2)}` : `-$${Math.abs(profit).toFixed(2)}`;
-                    message += ` 損益: ${profitText}`;
+                    const profitSign = profit >= 0 ? '+' : '';
+                    message += ` 損益: ${profitSign}${formatMoney(profit)}`;
                 }
 
                 toast.success(message, { duration: 4000 });
@@ -86,13 +87,13 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
             <CardContent className="space-y-4">
                 <div className="flex justify-between text-sm">
                     <span>當前餘額</span>
-                    <span className="font-bold">${user.balance.toFixed(2)}</span>
+                    <span className="font-bold">{formatMoney(user.balance)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span>目前持有</span>
                     <span className={`font-bold ${isShortPosition ? 'text-red-500' : 'text-blue-500'}`}>
                         {isShortPosition && '⬇️ 空單 '}
-                        {holdingQuantity || 0} 股
+                        {formatNumber(holdingQuantity || 0)} 股
                         {holdingQuantity !== 0 && (() => {
                             // 多頭損益：現價 > 成本 = 賺
                             // 空頭損益：成本 > 現價 = 賺
@@ -102,9 +103,9 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                             const isPositive = pnl >= 0;
                             return (
                                 <span className="text-xs ml-1">
-                                    <span className="text-slate-400 mr-1">(@${holdingAvgCost.toFixed(1)})</span>
+                                    <span className="text-slate-400 mr-1">(@{formatPrice(holdingAvgCost)})</span>
                                     <span className={isPositive ? "text-red-500" : "text-green-500"}>
-                                        {isPositive ? "+" : ""}{pnl.toFixed(2)}%
+                                        {formatPercent(pnl)}
                                     </span>
                                 </span>
                             );
@@ -113,7 +114,7 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                 </div>
                 <div className="flex justify-between text-sm">
                     <span>現價</span>
-                    <span className="font-mono">${stock.price.toFixed(2)}</span>
+                    <span className="font-mono">{formatPrice(stock.price)}</span>
                 </div>
                 
                 <div className="space-y-2">
@@ -172,17 +173,17 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     <div className="space-y-1">
                         <div className="flex justify-between text-sm font-bold pt-2 border-t">
                             <span>預估總額</span>
-                            <span>${cost.toFixed(2)}</span>
+                            <span>{formatMoney(cost)}</span>
                         </div>
                         <div className="flex justify-between text-xs text-zinc-400">
                             <span>做空保證金</span>
-                            <span>${shortMargin.toFixed(2)}</span>
+                            <span>{formatMoney(shortMargin)}</span>
                         </div>
                     </div>
                 ) : (
                     <div className="flex justify-between text-sm font-bold pt-2 border-t">
                         <span>回補成本</span>
-                        <span>${cost.toFixed(2)}</span>
+                        <span>{formatMoney(cost)}</span>
                     </div>
                 )}
 
@@ -230,18 +231,18 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                             onClick={() => handleTrade('short')}
                             disabled={loading || !canShort}
                         >
-                            做空 ⬇️ (需保證金 ${shortMargin.toFixed(0)})
+                            做空 ⬇️ (需保證金 {formatMoney(shortMargin, 0)})
                         </Button>
 
                         {/* 錯誤提示 */}
                         {!canShort && quantity > 0 && (
                             <div className="text-xs text-orange-500 text-center bg-orange-500/10 p-2 rounded border border-orange-500/30">
-                                💰 保證金不足：需要 ${shortMargin.toFixed(2)}，當前餘額 ${user.balance.toFixed(2)}
+                                💰 保證金不足：需要 {formatMoney(shortMargin)}，當前餘額 {formatMoney(user.balance)}
                             </div>
                         )}
                         {!canBuy && !isShortPosition && quantity > 0 && (
                             <div className="text-xs text-red-500 text-center bg-red-500/10 p-2 rounded">
-                                💰 餘額不足：需要 ${cost.toFixed(2)}，當前餘額 ${user.balance.toFixed(2)}
+                                💰 餘額不足：需要 {formatMoney(cost)}，當前餘額 {formatMoney(user.balance)}
                             </div>
                         )}
                         {holdingQuantity <= 0 && (

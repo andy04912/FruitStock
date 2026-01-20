@@ -4,11 +4,12 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent } from "../components/ui/components";
-import { 
-    User, Wallet, TrendingUp, TrendingDown, PiggyBank, 
+import {
+    User, Wallet, TrendingUp, TrendingDown, PiggyBank,
     History, Gift, Users, Gamepad2, Edit2, Check, X,
     ChevronDown, ChevronUp, DollarSign
 } from "lucide-react";
+import { formatMoney, formatNumber, formatPrice, formatPercent } from "../utils/format";
 
 export default function ProfilePage() {
     const { API_URL, token, user } = useAuth();
@@ -204,16 +205,7 @@ export default function ProfilePage() {
     const tradeTransactions = useMemo(() => 
         transactions.filter(t => t.type !== "dividend"), [transactions]);
 
-    const formatMoney = (val) => {
-        if (val === undefined || val === null) return "$0";
-        return new Intl.NumberFormat('en-US', { 
-            style: 'currency', 
-            currency: 'USD', 
-            maximumFractionDigits: 0 
-        }).format(val);
-    };
-
-    const formatPercent = (val) => `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`;
+    // 格式化函數已從 utils/format.js 導入
 
     if (loading) {
         return (
@@ -372,7 +364,7 @@ export default function ProfilePage() {
                                         <div key={h.stock_id} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
                                             <div>
                                                 <Link to={`/stock/${h.stock_id}`} className="font-bold hover:text-emerald-400 transition-colors">{h.symbol}</Link>
-                                                <span className="text-zinc-400 ml-2 text-sm">{h.quantity} 股</span>
+                                                <span className="text-zinc-400 ml-2 text-sm">{formatNumber(h.quantity)} 股</span>
                                             </div>
                                             <div className="text-right">
                                                 <div className="font-mono">{formatMoney(h.marketValue)}</div>
@@ -410,7 +402,7 @@ export default function ProfilePage() {
                                                 <Link to={`/stock/${h.stock_id}`} className="font-bold hover:text-red-400 transition-colors text-red-300">
                                                     {h.symbol}
                                                 </Link>
-                                                <span className="text-zinc-400 ml-2 text-sm">-{h.absQuantity} 股</span>
+                                                <span className="text-zinc-400 ml-2 text-sm">-{formatNumber(h.absQuantity)} 股</span>
                                             </div>
                                             <div className="text-right">
                                                 <div className="font-mono text-zinc-300">{formatMoney(h.marketValue)}</div>
@@ -482,9 +474,9 @@ export default function ProfilePage() {
                                                             <span className="text-zinc-500 text-xs block md:inline md:ml-2">{h.name}</span>
                                                         </Link>
                                                     </td>
-                                                    <td className="text-right py-3">{h.quantity}</td>
-                                                    <td className="text-right py-3 hidden md:table-cell">${h.average_cost.toFixed(2)}</td>
-                                                    <td className="text-right py-3 hidden md:table-cell">${h.currentPrice.toFixed(2)}</td>
+                                                    <td className="text-right py-3">{formatNumber(h.quantity)}</td>
+                                                    <td className="text-right py-3 hidden md:table-cell">{formatPrice(h.average_cost)}</td>
+                                                    <td className="text-right py-3 hidden md:table-cell">{formatPrice(h.currentPrice)}</td>
                                                     <td className="text-right py-3 font-mono">{formatMoney(h.marketValue)}</td>
                                                     <td className={`text-right py-3 font-mono ${h.unrealizedPnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                                         {formatMoney(h.unrealizedPnl)}
@@ -528,9 +520,9 @@ export default function ProfilePage() {
                                                             <span className="text-zinc-500 text-xs block md:inline md:ml-2">{h.name}</span>
                                                         </Link>
                                                     </td>
-                                                    <td className="text-right py-3 text-red-400">-{h.absQuantity}</td>
-                                                    <td className="text-right py-3 hidden md:table-cell">${h.average_cost.toFixed(2)}</td>
-                                                    <td className="text-right py-3 hidden md:table-cell">${h.currentPrice.toFixed(2)}</td>
+                                                    <td className="text-right py-3 text-red-400">-{formatNumber(h.absQuantity)}</td>
+                                                    <td className="text-right py-3 hidden md:table-cell">{formatPrice(h.average_cost)}</td>
+                                                    <td className="text-right py-3 hidden md:table-cell">{formatPrice(h.currentPrice)}</td>
                                                     <td className="text-right py-3 font-mono">{formatMoney(h.marketValue)}</td>
                                                     <td className={`text-right py-3 font-mono ${h.unrealizedPnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                                         {formatMoney(h.unrealizedPnl)}
@@ -606,7 +598,7 @@ export default function ProfilePage() {
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="font-mono">${t.price.toFixed(2)}</div>
+                                                <div className="font-mono">{formatPrice(t.price)}</div>
                                                 {t.profit !== null && (
                                                     <div className={`text-xs ${t.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                         {t.profit >= 0 ? '+' : ''}{formatMoney(t.profit)}

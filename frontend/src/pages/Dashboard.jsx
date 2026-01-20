@@ -7,6 +7,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { sounds } from "../utils/sound";
 import { TrendingUp, TrendingDown, RefreshCcw, Heart } from "lucide-react";
+import { formatPrice, formatPercent, formatNumber } from "../utils/format";
 
 const EventTicker = ({ event }) => {
     if (!event) return <div className="h-10 bg-muted/30 rounded flex items-center px-4 text-sm text-muted-foreground">目前市場平靜...</div>;
@@ -53,11 +54,11 @@ const StockCard = ({ stock, isWatchlist, onToggleWatchlist }) => {
 
                         <div className="text-right relative z-10">
                             <div className={`text-xl md:text-2xl font-mono font-bold ${colorClass}`}>
-                                ${stock.price.toFixed(2)}
+                                {formatPrice(stock.price)}
                             </div>
                             {stock.day_open && stock.day_open > 0 && (
                                 <div className={`text-xs font-mono mt-0.5 font-bold ${colorClass}`}>
-                                    {sign}{((stock.price - stock.day_open) / stock.day_open * 100).toFixed(2)}%
+                                    {formatPercent((stock.price - stock.day_open) / stock.day_open * 100)}
                                 </div>
                             )}
                         </div>

@@ -10,6 +10,7 @@ class TransactionType(str, Enum):
     SHORT = "short"
     COVER = "cover"
     DIVIDEND = "dividend"
+    SHORT_INTEREST = "short_interest"  # 做空利息
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -69,6 +70,11 @@ class Portfolio(SQLModel, table=True):
     stock_id: int = Field(foreign_key="stock.id")
     quantity: int = Field(default=0, sa_column=Column(BigInteger))
     average_cost: float = Field(default=0.0)
+
+    # 做空相關欄位
+    margin_locked: float = Field(default=0.0)  # 鎖定的保證金金額
+    short_entry_price: Optional[float] = Field(default=None)  # 做空開倉價
+    last_interest_charged: Optional[datetime] = Field(default=None)  # 上次收取利息時間
 
     user: User = Relationship(back_populates="portfolios")
     stock: Stock = Relationship(back_populates="portfolios")

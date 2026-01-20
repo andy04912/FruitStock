@@ -144,17 +144,43 @@ export default function ProfilePage() {
         return map;
     }, [stocks]);
 
-    const enrichedHoldings = useMemo(() => {
-        return holdings
-            .filter(p => p.quantity > 0)
-            .map(p => {
-                const stock = stockMap[p.stock_id];
-                if (!stock) return null;
+    // 分離多頭和空頭倉位
+    const { longHoldings, shortHoldings } = useMemo(() => {
+        const longs = [];
+        const shorts = [];
+
+        holdings.forEach(p => {
+            const stock = stockMap[p.stock_id];
+            if (!stock) return;
+
+            const isShort = p.quantity < 0;
+            const absQuantity = Math.abs(p.quantity);
+
+            if (isShort) {
+                // 空頭損益：成本 - 現價（價格下跌才賺錢）
+                const marketValue = stock.price * absQuantity;
+                const costBasis = p.average_cost * absQuantity;
+                const unrealizedPnl = costBasis - marketValue;
+                const unrealizedPct = costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
+
+                shorts.push({
+                    ...p,
+                    absQuantity,
+                    symbol: stock.symbol,
+                    name: stock.name,
+                    currentPrice: stock.price,
+                    marketValue,
+                    unrealizedPnl,
+                    unrealizedPct
+                });
+            } else if (p.quantity > 0) {
+                // 多頭損益：現價 - 成本
                 const marketValue = stock.price * p.quantity;
                 const costBasis = p.average_cost * p.quantity;
                 const unrealizedPnl = marketValue - costBasis;
                 const unrealizedPct = costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
-                return {
+
+                longs.push({
                     ...p,
                     symbol: stock.symbol,
                     name: stock.name,
@@ -162,10 +188,15 @@ export default function ProfilePage() {
                     marketValue,
                     unrealizedPnl,
                     unrealizedPct
-                };
-            })
-            .filter(Boolean);
+                });
+            }
+        });
+
+        return { longHoldings: longs, shortHoldings: shorts };
     }, [holdings, stockMap]);
+
+    // 保持向後相容（合併多空倉位）
+    const enrichedHoldings = [...longHoldings, ...shortHoldings];
 
     // 篩選交易類型
     const dividendTransactions = useMemo(() => 
@@ -364,6 +395,39 @@ export default function ProfilePage() {
                         </Card>
                     )}
 
+                    {/* Short Positions Preview */}
+                    {shortHoldings.length > 0 && (
+                        <Card className="bg-zinc-900/50 border-red-900/30 border-2">
+                            <CardContent className="p-4">
+                                <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
+                                    <TrendingDown className="h-5 w-5 text-red-400" />
+                                    空頭倉位 ⬇️
+                                </h3>
+                                <div className="space-y-2">
+                                    {shortHoldings.map(h => (
+                                        <div key={h.stock_id} className="flex items-center justify-between p-3 bg-red-950/30 rounded-lg border border-red-900/30">
+                                            <div>
+                                                <Link to={`/stock/${h.stock_id}`} className="font-bold hover:text-red-400 transition-colors text-red-300">
+                                                    {h.symbol}
+                                                </Link>
+                                                <span className="text-zinc-400 ml-2 text-sm">-{h.absQuantity} 股</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-mono text-zinc-300">{formatMoney(h.marketValue)}</div>
+                                                <div className={`text-sm ${h.unrealizedPnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                                    {formatPercent(h.unrealizedPct)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 p-2 bg-orange-500/10 rounded text-xs text-orange-400 border border-orange-500/30">
+                                    ⚠️ 空頭倉位每日收取 0.01% 利息
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
                     {/* Asset History Chart Placeholder */}
                     {assetHistory.length > 0 && (
                         <Card className="bg-zinc-900/50 border-zinc-800">
@@ -389,13 +453,14 @@ export default function ProfilePage() {
 
             {activeTab === "holdings" && (
                 <div className="space-y-6">
-                    {/* Holdings */}
-                    <Card className="bg-zinc-900/50 border-zinc-800">
-                        <CardContent className="p-4">
-                            <h3 className="font-bold text-lg mb-4">持倉明細</h3>
-                            {enrichedHoldings.length === 0 ? (
-                                <p className="text-zinc-500 text-center py-8">尚無持股</p>
-                            ) : (
+                    {/* Long Holdings */}
+                    {longHoldings.length > 0 && (
+                        <Card className="bg-zinc-900/50 border-zinc-800">
+                            <CardContent className="p-4">
+                                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                                    <TrendingUp className="h-5 w-5 text-emerald-400" />
+                                    多頭持倉
+                                </h3>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm">
                                         <thead className="text-zinc-400 border-b border-zinc-700">
@@ -409,7 +474,7 @@ export default function ProfilePage() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {enrichedHoldings.map(h => (
+                                            {longHoldings.map(h => (
                                                 <tr key={h.stock_id} className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors">
                                                     <td className="py-3">
                                                         <Link to={`/stock/${h.stock_id}`} className="hover:text-emerald-400 transition-colors">
@@ -430,9 +495,67 @@ export default function ProfilePage() {
                                         </tbody>
                                     </table>
                                 </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Short Holdings */}
+                    {shortHoldings.length > 0 && (
+                        <Card className="bg-zinc-900/50 border-red-900/30 border-2">
+                            <CardContent className="p-4">
+                                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                                    <TrendingDown className="h-5 w-5 text-red-400" />
+                                    空頭持倉 ⬇️
+                                </h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="text-zinc-400 border-b border-zinc-700">
+                                            <tr>
+                                                <th className="text-left py-2">股票</th>
+                                                <th className="text-right py-2">數量</th>
+                                                <th className="text-right py-2 hidden md:table-cell">開倉價</th>
+                                                <th className="text-right py-2 hidden md:table-cell">現價</th>
+                                                <th className="text-right py-2">市值</th>
+                                                <th className="text-right py-2">損益</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {shortHoldings.map(h => (
+                                                <tr key={h.stock_id} className="border-b border-zinc-800 hover:bg-red-950/30 transition-colors">
+                                                    <td className="py-3">
+                                                        <Link to={`/stock/${h.stock_id}`} className="hover:text-red-400 transition-colors">
+                                                            <span className="font-bold text-red-300">{h.symbol}</span>
+                                                            <span className="text-zinc-500 text-xs block md:inline md:ml-2">{h.name}</span>
+                                                        </Link>
+                                                    </td>
+                                                    <td className="text-right py-3 text-red-400">-{h.absQuantity}</td>
+                                                    <td className="text-right py-3 hidden md:table-cell">${h.average_cost.toFixed(2)}</td>
+                                                    <td className="text-right py-3 hidden md:table-cell">${h.currentPrice.toFixed(2)}</td>
+                                                    <td className="text-right py-3 font-mono">{formatMoney(h.marketValue)}</td>
+                                                    <td className={`text-right py-3 font-mono ${h.unrealizedPnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                                        {formatMoney(h.unrealizedPnl)}
+                                                        <span className="text-xs block">{formatPercent(h.unrealizedPct)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="mt-4 p-3 bg-orange-500/10 rounded text-xs text-orange-400 border border-orange-500/30">
+                                    ⚠️ 空頭倉位每日收取 0.01% 利息，保證金比率低於 110% 將被強制平倉
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* No Holdings */}
+                    {longHoldings.length === 0 && shortHoldings.length === 0 && (
+                        <Card className="bg-zinc-900/50 border-zinc-800">
+                            <CardContent className="p-8">
+                                <p className="text-zinc-500 text-center">尚無持倉</p>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Dividends */}
                     <Card className="bg-zinc-900/50 border-zinc-800">

@@ -6,8 +6,7 @@ export default defineConfig({
   base: '/', // Updated for Synology WebStation Alias
   plugins: [react()],
   server: {
-    host: '127.0.0.1',
-    port: 3006, // Changed to 3006 to avoid Windows Hyper-V reserved ports (EACCES on 5173)
+    host: '127.0.0.1', // Changed to 3006 to avoid Windows Hyper-V reserved ports (EACCES on 5173)
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',

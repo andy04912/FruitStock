@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FruitStock - 服務已遷移</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: white;
+        }
+        .container { text-align: center; padding: 40px; max-width: 500px; }
+        .icon { font-size: 64px; margin-bottom: 24px; animation: bounce 1s ease infinite; }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        h1 {
+            font-size: 28px; margin-bottom: 16px;
+            background: linear-gradient(90deg, #10b981, #06b6d4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        p { font-size: 16px; color: #94a3b8; margin-bottom: 24px; line-height: 1.6; }
+        .countdown { font-size: 48px; font-weight: bold; color: #10b981; margin-bottom: 24px; }
+        .btn {
+            display: inline-block; padding: 14px 32px;
+            background: linear-gradient(90deg, #10b981, #06b6d4);
+            color: white; text-decoration: none; border-radius: 12px;
+            font-weight: bold; font-size: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(16, 185, 129, 0.3); }
+        .note { margin-top: 24px; font-size: 14px; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🚀</div>
+        <h1>FruitStock 已遷移至雲端！</h1>
+        <p>為了提供更好的服務體驗，我們已將系統遷移至雲端伺服器。<br>您的帳號和資料都已安全轉移，請重新登入即可繼續使用。</p>
+        <div class="countdown" id="countdown">5</div>
+        <a href="https://fruit-stock.zeabur.app/" class="btn">立即前往新網址 →</a>
+        <p class="note">將在 <span id="seconds">5</span> 秒後自動跳轉...</p>
+    </div>
+    <script>
+        let s = 5;
+        const t = setInterval(() => {
+            s--;
+            document.getElementById('countdown').textContent = s;
+            document.getElementById('seconds').textContent = s;
+            if (s <= 0) { clearInterval(t); window.location.href = 'https://fruit-stock.zeabur.app/'; }
+        }, 1000);
+    </script>
+</body>
+</html>

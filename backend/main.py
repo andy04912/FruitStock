@@ -301,7 +301,10 @@ async def lifespan(app: FastAPI):
     
     # 每日 00:00 記錄資產快照
     scheduler.add_job(daily_asset_snapshot, 'cron', hour=0, minute=0)
-    
+
+    # 每日 00:01 收取做空利息
+    scheduler.add_job(market_engine.charge_short_interest, 'cron', hour=0, minute=1)
+
     scheduler.start()
 
     

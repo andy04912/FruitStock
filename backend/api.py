@@ -119,9 +119,51 @@ async def sell_stock(stock_id: int, quantity: int, current_user: User = Depends(
                         break
         except Exception:
             pass
-    
+
     trader = Trader(session)
     return trader.sell_stock(current_user, stock_id, quantity, live_price=live_price)
+
+@router.post("/trade/short")
+async def short_stock(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """做空股票 API"""
+    # 嘗試從 Redis 取得即時價格
+    live_price = None
+    redis = await get_redis()
+    if redis:
+        try:
+            cached = await redis.get("market_stocks")
+            if cached:
+                stocks_data = json.loads(cached)
+                for s in stocks_data:
+                    if s.get("id") == stock_id:
+                        live_price = float(s.get("price", 0))
+                        break
+        except Exception:
+            pass
+
+    trader = Trader(session)
+    return trader.short_stock(current_user, stock_id, quantity, live_price=live_price)
+
+@router.post("/trade/cover")
+async def cover_short(stock_id: int, quantity: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """回補空單 API"""
+    # 嘗試從 Redis 取得即時價格
+    live_price = None
+    redis = await get_redis()
+    if redis:
+        try:
+            cached = await redis.get("market_stocks")
+            if cached:
+                stocks_data = json.loads(cached)
+                for s in stocks_data:
+                    if s.get("id") == stock_id:
+                        live_price = float(s.get("price", 0))
+                        break
+        except Exception:
+            pass
+
+    trader = Trader(session)
+    return trader.cover_short(current_user, stock_id, quantity, live_price=live_price)
 
 @router.post("/bonus/claim")
 def claim_daily_bonus(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):

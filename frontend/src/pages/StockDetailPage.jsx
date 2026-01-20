@@ -12,27 +12,42 @@ import { Newspaper, TrendingUp } from "lucide-react";
 const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvgCost }) => {
     const [quantity, setQuantity] = useState(1);
     const [loading, setLoading] = useState(false);
-    
+
+    // 判斷是否為空頭倉位
+    const isShortPosition = holdingQuantity < 0;
+    const absHolding = Math.abs(holdingQuantity);
+
     // Estimate cost
     const cost = stock.price * quantity;
     const canBuy = user.balance >= cost;
 
-    const handleTrade = async (type) => { // 'buy' or 'sell'
+    // 計算做空所需保證金（150%）
+    const shortMargin = stock.price * quantity * 1.5;
+    const canShort = user.balance >= shortMargin;
+
+    const handleTrade = async (type) => { // 'buy', 'sell', 'short', 'cover'
         if (quantity <= 0 || loading) return;
         setLoading(true);
         try {
             const res = await axios.post(`${API_URL}/trade/${type}?stock_id=${stock.id}&quantity=${quantity}`);
-            
+
             if (res.data.status === 'error') {
                 toast.error(res.data.message);
                 sounds.playError();
             } else {
                 onTrade();
-                if (type === 'buy') {
-                    toast.success(`買入成功！ (${stock.name} x${quantity})`);
+                const actionText = {
+                    'buy': '買入',
+                    'sell': '賣出',
+                    'short': '做空',
+                    'cover': '回補'
+                }[type] || type;
+
+                toast.success(`${actionText}成功！ (${stock.name} x${quantity})`);
+
+                if (type === 'buy' || type === 'cover') {
                     sounds.playBuy();
                 } else {
-                    toast.success(`賣出成功！ (${stock.name} x${quantity})`);
                     sounds.playSell();
                 }
             }
@@ -56,10 +71,15 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                 </div>
                 <div className="flex justify-between text-sm">
                     <span>目前持有</span>
-                    <span className="font-bold text-blue-500">
-                        {holdingQuantity || 0} 股 
-                        {holdingQuantity > 0 && (() => {
-                            const pnl = ((stock.price - holdingAvgCost) / holdingAvgCost) * 100;
+                    <span className={`font-bold ${isShortPosition ? 'text-red-500' : 'text-blue-500'}`}>
+                        {isShortPosition && '⬇️ 空單 '}
+                        {holdingQuantity || 0} 股
+                        {holdingQuantity !== 0 && (() => {
+                            // 多頭損益：現價 > 成本 = 賺
+                            // 空頭損益：成本 > 現價 = 賺
+                            const pnl = isShortPosition
+                                ? ((holdingAvgCost - stock.price) / holdingAvgCost) * 100
+                                : ((stock.price - holdingAvgCost) / holdingAvgCost) * 100;
                             const isPositive = pnl >= 0;
                             return (
                                 <span className="text-xs ml-1">
@@ -112,23 +132,63 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     <span>${(cost).toFixed(2)}</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <Button 
-                        className="bg-green-600 hover:bg-green-700 w-full" 
-                        onClick={() => handleTrade('buy')}
-                        disabled={loading || !canBuy}
-                    >
-                        買入
-                    </Button>
-                    <Button 
-                        className="bg-red-600 hover:bg-red-700 w-full" 
-                        onClick={() => handleTrade('sell')}
-                        disabled={loading}
-                    >
-                        賣出
-                    </Button>
-                </div>
-                {!canBuy && <div className="text-xs text-red-500 text-center">餘額不足</div>}
+                {/* 根據倉位類型顯示不同按鈕 */}
+                {isShortPosition ? (
+                    // 空頭倉位：只顯示回補按鈕
+                    <div className="space-y-3">
+                        <div className="text-xs text-orange-500 text-center bg-orange-500/10 p-2 rounded border border-orange-500/30">
+                            ⚠️ 您有空頭倉位，需先回補才能進行其他操作
+                        </div>
+                        <Button
+                            className="bg-blue-600 hover:bg-blue-700 w-full"
+                            onClick={() => handleTrade('cover')}
+                            disabled={loading || quantity > absHolding}
+                        >
+                            回補空單 ({absHolding} 股)
+                        </Button>
+                        {quantity > absHolding && (
+                            <div className="text-xs text-red-500 text-center">
+                                回補數量不能超過空單數量
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    // 多頭倉位或無倉位：顯示所有按鈕
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button
+                                className="bg-green-600 hover:bg-green-700 w-full"
+                                onClick={() => handleTrade('buy')}
+                                disabled={loading || !canBuy}
+                            >
+                                買入
+                            </Button>
+                            <Button
+                                className="bg-red-600 hover:bg-red-700 w-full"
+                                onClick={() => handleTrade('sell')}
+                                disabled={loading || holdingQuantity <= 0}
+                            >
+                                賣出
+                            </Button>
+                        </div>
+                        <Button
+                            className="bg-orange-600 hover:bg-orange-700 w-full border border-orange-400/30"
+                            onClick={() => handleTrade('short')}
+                            disabled={loading || !canShort}
+                        >
+                            做空 ⬇️
+                        </Button>
+                        {!canShort && (
+                            <div className="text-xs text-orange-500 text-center bg-orange-500/10 p-2 rounded">
+                                做空需 150% 保證金 (${shortMargin.toFixed(2)})
+                            </div>
+                        )}
+                        {!canBuy && !isShortPosition && (
+                            <div className="text-xs text-red-500 text-center">餘額不足</div>
+                        )}
+                    </div>
+                )}
+
             </CardContent>
         </Card>
     );

@@ -398,6 +398,9 @@ class MarketEngine:
             # Only commit if we actually changed Predictions/Events/Gurus
             if session.new or session.dirty:
                  session.commit()
+
+        # 檢查空單保證金（每次 tick 執行）
+        self.check_margin_requirements()
                 
     def _update_candle(self, stock, now):
         sec_bucket = (now.second // 5) * 5
@@ -572,3 +575,147 @@ class MarketEngine:
             session.commit()
             if payout_count > 0:
                 print(f"[Market] Dividends paid to {payout_count} holders.")
+
+    def check_margin_requirements(self):
+        """
+        檢查所有空單的保證金比率，低於 110% 強制平倉
+        每秒在 update_prices() 後執行
+        """
+        from models import User, Transaction, TransactionType  # Late import
+        from trader import Trader
+
+        with self.session_factory() as session:
+            # 找出所有空單持倉
+            short_positions = session.exec(
+                select(Portfolio).where(Portfolio.quantity < 0)
+            ).all()
+
+            if not short_positions:
+                return
+
+            force_closed = 0
+
+            for position in short_positions:
+                # 取得股票當前價格（從記憶體）
+                stock_price = None
+                for s in self.active_stocks:
+                    if s.id == position.stock_id:
+                        stock_price = s.price
+                        break
+
+                if not stock_price:
+                    continue
+
+                # 計算當前空單市值
+                short_qty = abs(position.quantity)
+                current_value = short_qty * stock_price
+
+                # 計算未實現虧損
+                unrealized_loss = (stock_price - position.average_cost) * short_qty
+
+                # 取得使用者餘額
+                user = session.get(User, position.user_id)
+                if not user:
+                    continue
+
+                # 計算保證金比率 = (餘額 + 鎖定保證金) / (當前市值 + 虧損)
+                available_margin = user.balance + position.margin_locked
+                required_margin = current_value + max(0, unrealized_loss)
+
+                if required_margin > 0:
+                    margin_ratio = available_margin / required_margin
+                else:
+                    margin_ratio = 999  # 無風險
+
+                # 強制平倉條件：保證金比率 < 110% (1.1)
+                if margin_ratio < 1.1:
+                    print(f"[Market] 強制平倉！使用者 {user.username} 的 {position.stock_id} 空單，保證金比率 {margin_ratio*100:.2f}%")
+
+                    # 執行強制平倉
+                    trader = Trader(session)
+                    result = trader.cover_short(user, position.stock_id, short_qty, live_price=stock_price)
+
+                    if isinstance(result, Transaction):
+                        force_closed += 1
+
+                        # 記錄強平事件（可選：發送通知給使用者）
+                        print(f"[Market] 已強平 {user.username} 的 {short_qty} 股空單 @ ${stock_price:.2f}")
+
+                    session.commit()
+
+                # 警告通知：保證金比率 < 120% (1.2) 但 > 110%
+                elif margin_ratio < 1.2:
+                    print(f"[Market] ⚠️ 保證金警告！使用者 {user.username} 的空單保證金比率 {margin_ratio*100:.2f}%，接近強平線")
+                    # TODO: 發送 WebSocket 通知給使用者
+
+            if force_closed > 0:
+                print(f"[Market] 本次強制平倉 {force_closed} 個空單")
+
+    def charge_short_interest(self):
+        """
+        收取做空利息（每日執行一次）
+        利率：0.01% per day (年化約 3.65%)
+        """
+        from models import User, Transaction, TransactionType  # Late import
+
+        DAILY_INTEREST_RATE = 0.0001  # 0.01% 日利率
+
+        with self.session_factory() as session:
+            # 找出所有空單持倉
+            short_positions = session.exec(
+                select(Portfolio).where(Portfolio.quantity < 0)
+            ).all()
+
+            if not short_positions:
+                return
+
+            total_interest = 0
+            interest_count = 0
+
+            for position in short_positions:
+                # 計算利息金額 = |數量| * 平均成本 * 利率
+                short_qty = abs(position.quantity)
+                interest_amount = round(short_qty * position.average_cost * DAILY_INTEREST_RATE, 2)
+
+                if interest_amount <= 0:
+                    continue
+
+                # 取得使用者
+                user = session.get(User, position.user_id)
+                if not user:
+                    continue
+
+                # 扣除利息
+                if user.balance >= interest_amount:
+                    user.balance -= interest_amount
+                    session.add(user)
+
+                    # 記錄利息交易
+                    stock = session.get(Stock, position.stock_id)
+                    if stock:
+                        tx = Transaction(
+                            user_id=user.id,
+                            stock_id=position.stock_id,
+                            type=TransactionType.SHORT_INTEREST,
+                            price=position.average_cost,
+                            quantity=short_qty,
+                            profit=-interest_amount,  # 負數表示支出
+                            timestamp=datetime.utcnow()
+                        )
+                        session.add(tx)
+
+                        total_interest += interest_amount
+                        interest_count += 1
+
+                    # 更新最後收費時間
+                    position.last_interest_charged = datetime.utcnow()
+                    session.add(position)
+                else:
+                    # 餘額不足支付利息 - 強制平倉
+                    print(f"[Market] 使用者 {user.username} 餘額不足支付做空利息，觸發強制平倉")
+                    # 由 check_margin_requirements 處理
+
+            session.commit()
+
+            if interest_count > 0:
+                print(f"[Market] 做空利息收取完成：共 {interest_count} 筆，總計 ${total_interest:.2f}")

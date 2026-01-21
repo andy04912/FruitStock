@@ -111,7 +111,7 @@ export default function LeaderboardPage() {
                                     <div className="relative mb-4">
                                         <div className="h-20 w-20 md:h-24 md:w-24 rounded-full bg-gradient-to-br from-slate-300 to-slate-500 p-1 shadow-[0_0_20px_rgba(148,163,184,0.4)]">
                                             <div className="h-full w-full rounded-full bg-background flex items-center justify-center text-2xl font-bold text-slate-400">
-                                                {top3[1].username.charAt(0).toUpperCase()}
+                                                {(top3[1].display_name || top3[1].username).charAt(0).toUpperCase()}
                                             </div>
                                         </div>
                                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-slate-300 text-slate-900 font-bold px-3 py-1 rounded-full text-sm shadow-lg border-2 border-slate-400">
@@ -122,7 +122,7 @@ export default function LeaderboardPage() {
                                         <div className="h-2 w-full bg-slate-400" />
                                         <CardContent className="p-4 text-center">
                                             <div className="font-bold text-xl truncate">
-                                                {top3[1].username}
+                                                {top3[1].display_name || top3[1].username}
                                                 {top3[1].is_me && <span className="ml-2 text-xs text-emerald-400">(你)</span>}
                                             </div>
                                             <div className="text-slate-400 font-mono mt-1">{formatMoney(top3[1].net_worth)}</div>
@@ -139,7 +139,7 @@ export default function LeaderboardPage() {
                                         <Crown className="absolute -top-12 left-1/2 -translate-x-1/2 h-12 w-12 text-yellow-500 animate-bounce drop-shadow-[0_0_10px_gold]" />
                                         <div className="h-28 w-28 md:h-32 md:w-32 rounded-full bg-gradient-to-br from-yellow-300 via-orange-400 to-yellow-500 p-1.5 shadow-[0_0_40px_rgba(234,179,8,0.6)]">
                                             <div className="h-full w-full rounded-full bg-background flex items-center justify-center text-4xl font-black text-yellow-500">
-                                                {top3[0].username.charAt(0).toUpperCase()}
+                                                {(top3[0].display_name || top3[0].username).charAt(0).toUpperCase()}
                                             </div>
                                         </div>
                                         <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-black px-4 py-1.5 rounded-full text-lg shadow-xl shadow-orange-500/20 border-2 border-yellow-200">
@@ -150,7 +150,7 @@ export default function LeaderboardPage() {
                                         <div className="h-3 w-full bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 animate-pulse" />
                                         <CardContent className="p-6 text-center">
                                             <div className="font-black text-2xl truncate text-yellow-400 mb-1">
-                                                {top3[0].username}
+                                                {top3[0].display_name || top3[0].username}
                                                 {top3[0].is_me && <span className="ml-2 text-xs text-emerald-400">(你)</span>}
                                             </div>
                                             <div className="text-foreground font-mono text-xl font-bold">{formatMoney(top3[0].net_worth)}</div>
@@ -169,7 +169,7 @@ export default function LeaderboardPage() {
                                     <div className="relative mb-4">
                                         <div className="h-20 w-20 md:h-24 md:w-24 rounded-full bg-gradient-to-br from-orange-700 to-amber-900 p-1 shadow-[0_0_20px_rgba(180,83,9,0.4)]">
                                             <div className="h-full w-full rounded-full bg-background flex items-center justify-center text-2xl font-bold text-amber-700">
-                                                {top3[2].username.charAt(0).toUpperCase()}
+                                                {(top3[2].display_name || top3[2].username).charAt(0).toUpperCase()}
                                             </div>
                                         </div>
                                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-amber-800 text-amber-100 font-bold px-3 py-1 rounded-full text-sm shadow-lg border-2 border-amber-900">
@@ -180,7 +180,7 @@ export default function LeaderboardPage() {
                                         <div className="h-2 w-full bg-amber-700" />
                                         <CardContent className="p-4 text-center">
                                             <div className="font-bold text-xl truncate text-amber-500">
-                                                {top3[2].username}
+                                                {top3[2].display_name || top3[2].username}
                                                 {top3[2].is_me && <span className="ml-2 text-xs text-emerald-400">(你)</span>}
                                             </div>
                                             <div className="text-amber-700 font-mono mt-1">{formatMoney(top3[2].net_worth)}</div>
@@ -205,11 +205,11 @@ export default function LeaderboardPage() {
                             )}
                     
                     {rest.map((player, index) => (
-                        <div 
-                            key={player.username}
+                        <div
+                            key={player.id || player.username}
                             className={`group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:shadow-lg ${
-                                player.is_me || player.username === user?.username 
-                                    ? "border-primary/50 bg-primary/10 shadow-[0_0_15px_rgba(6,182,212,0.15)]" 
+                                player.is_me || player.username === user?.username
+                                    ? "border-primary/50 bg-primary/10 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                                     : ""
                             }`}
                         >
@@ -219,15 +219,15 @@ export default function LeaderboardPage() {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-muted-foreground font-bold">
-                                        {player.username.charAt(0).toUpperCase()}
+                                        {(player.display_name || player.username).charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex flex-col">
                                         <span className={`font-bold text-lg ${
-                                            player.is_me || player.username === user?.username 
-                                                ? "text-primary" 
+                                            player.is_me || player.username === user?.username
+                                                ? "text-primary"
                                                 : "text-slate-200"
                                         }`}>
-                                            {player.username}
+                                            {player.display_name || player.username}
                                         </span>
                                         {(player.is_me || player.username === user?.username) && (
                                             <span className="text-[10px] uppercase tracking-widest text-primary font-bold">YOU</span>

@@ -179,11 +179,14 @@ def get_leaderboard(session: Session = Depends(get_session)):
         
         net_worth = user.balance + stock_value
         leaderboard.append({
-            "username": user.nickname or user.username,  # 優先顯示暱稱
+            "id": user.id,
+            "username": user.username,  # 真實帳號
+            "nickname": user.nickname,  # 暱稱
+            "display_name": user.nickname or user.username,  # 優先顯示暱稱
             "balance": user.balance,
             "net_worth": net_worth
         })
-    
+
     leaderboard.sort(key=lambda x: x["net_worth"], reverse=True)
     return leaderboard[:10]
 

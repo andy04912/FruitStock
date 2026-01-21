@@ -285,6 +285,35 @@ def set_stock_price(stock_id: int, body: dict, session: Session = Depends(get_se
 
 # ==================== 用戶管理 API ====================
 
+@router.get("/users")
+def get_all_users(session: Session = Depends(get_session)):
+    """取得所有用戶資訊"""
+    users = session.exec(select(User)).all()
+    stocks = session.exec(select(Stock)).all()
+    stock_map = {s.id: s.price for s in stocks}
+
+    result = []
+    for user in users:
+        # 計算股票市值
+        portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
+        stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+
+        result.append({
+            "id": user.id,
+            "username": user.username,  # 真實帳號
+            "nickname": user.nickname,   # 顯示暱稱
+            "balance": round(user.balance, 2),
+            "stock_value": round(stock_value, 2),
+            "net_worth": round(user.balance + stock_value, 2),
+            "is_frozen": getattr(user, 'is_trading_frozen', False),
+            "created_at": user.created_at.isoformat() if hasattr(user, 'created_at') else None
+        })
+
+    # 按淨值排序
+    result.sort(key=lambda x: x['net_worth'], reverse=True)
+    return result
+
+
 @router.put("/users/{user_id}/balance")
 def adjust_user_balance(user_id: int, body: dict, session: Session = Depends(get_session)):
     """調整用戶餘額"""

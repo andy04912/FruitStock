@@ -362,7 +362,8 @@ export default function AdminPage() {
                 <thead className="bg-zinc-800">
                   <tr>
                     <th className="px-4 py-3 text-left">ID</th>
-                    <th className="px-4 py-3 text-left">用戶名</th>
+                    <th className="px-4 py-3 text-left">帳號</th>
+                    <th className="px-4 py-3 text-left">暱稱</th>
                     <th className="px-4 py-3 text-right">餘額</th>
                     <th className="px-4 py-3 text-right">股票市值</th>
                     <th className="px-4 py-3 text-right">淨值</th>
@@ -374,7 +375,8 @@ export default function AdminPage() {
                   {users.map(user => (
                     <tr key={user.id} className="hover:bg-zinc-800/50">
                       <td className="px-4 py-3 text-zinc-400">{user.id}</td>
-                      <td className="px-4 py-3 font-medium">{user.username}</td>
+                      <td className="px-4 py-3 font-mono text-sm text-zinc-300">{user.username}</td>
+                      <td className="px-4 py-3 font-medium">{user.nickname || <span className="text-zinc-500 italic">未設定</span>}</td>
                       <td className="px-4 py-3 text-right text-emerald-400">${user.balance.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right text-blue-400">${user.stock_value.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right font-bold text-yellow-400">${user.net_worth.toLocaleString()}</td>

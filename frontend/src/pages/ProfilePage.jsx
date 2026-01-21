@@ -10,6 +10,7 @@ import {
     ChevronDown, ChevronUp, DollarSign
 } from "lucide-react";
 import { formatMoney, formatNumber, formatPrice, formatPercent } from "../utils/format";
+import { LineChart } from "../components/charts/LineChart";
 
 export default function ProfilePage() {
     const { API_URL, token, user } = useAuth();
@@ -420,26 +421,79 @@ export default function ProfilePage() {
                         </Card>
                     )}
 
-                    {/* Asset History Chart Placeholder */}
-                    {assetHistory.length > 0 && (
-                        <Card className="bg-zinc-900/50 border-zinc-800">
-                            <CardContent className="p-4">
-                                <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
+                    {/* Asset History Chart */}
+                    <Card className="bg-zinc-900/50 border-zinc-800">
+                        <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="font-bold text-lg flex items-center gap-2">
                                     <TrendingUp className="h-5 w-5 text-cyan-400" />
                                     資產走勢
                                 </h3>
-                                <div className="h-48 flex items-center justify-center text-zinc-500">
-                                    <div className="text-center">
-                                        <p>最近 {assetHistory.length} 天資產記錄</p>
-                                        <p className="text-sm mt-2">
-                                            起始：{formatMoney(assetHistory[0]?.total_assets)} → 
-                                            現在：{formatMoney(profile?.total_assets)}
-                                        </p>
+                                {assetHistory.length > 0 && (
+                                    <div className="text-sm text-zinc-400">
+                                        最近 {assetHistory.length} 天
                                     </div>
+                                )}
+                            </div>
+
+                            {assetHistory.length > 0 ? (
+                                <>
+                                    {/* 資產摘要 */}
+                                    <div className="grid grid-cols-3 gap-3 mb-4">
+                                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                                            <div className="text-xs text-zinc-500 mb-1">起始資產</div>
+                                            <div className="text-sm font-bold text-zinc-300">
+                                                {formatMoney(assetHistory[0]?.total_assets)}
+                                            </div>
+                                        </div>
+                                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                                            <div className="text-xs text-zinc-500 mb-1">目前資產</div>
+                                            <div className="text-sm font-bold text-cyan-400">
+                                                {formatMoney(profile?.total_assets)}
+                                            </div>
+                                        </div>
+                                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                                            <div className="text-xs text-zinc-500 mb-1">總變化</div>
+                                            <div className={`text-sm font-bold ${
+                                                (profile?.total_assets - assetHistory[0]?.total_assets) >= 0
+                                                    ? 'text-red-400'
+                                                    : 'text-green-400'
+                                            }`}>
+                                                {(profile?.total_assets - assetHistory[0]?.total_assets) >= 0 ? '+' : ''}
+                                                {formatMoney(profile?.total_assets - assetHistory[0]?.total_assets)}
+                                                {assetHistory[0]?.total_assets > 0 && (
+                                                    <span className="text-xs ml-1">
+                                                        ({formatPercent((profile?.total_assets - assetHistory[0]?.total_assets) / assetHistory[0]?.total_assets)})
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 折線圖 */}
+                                    <LineChart
+                                        data={assetHistory}
+                                        height={300}
+                                        series={['total_assets', 'cash', 'stock_value']}
+                                        showLegend={true}
+                                    />
+                                </>
+                            ) : (
+                                <div className="h-64 flex flex-col items-center justify-center text-zinc-500">
+                                    <TrendingUp className="h-12 w-12 mb-3 opacity-30" />
+                                    <p className="text-center">
+                                        尚無資產歷史記錄
+                                    </p>
+                                    <p className="text-sm text-center mt-2">
+                                        系統每天會自動記錄您的資產快照
+                                    </p>
+                                    <p className="text-xs text-center mt-1 text-zinc-600">
+                                        明天開始就能看到資產走勢圖囉！
+                                    </p>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    )}
+                            )}
+                        </CardContent>
+                    </Card>
                 </div>
             )}
 

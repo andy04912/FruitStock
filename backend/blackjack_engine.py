@@ -292,9 +292,9 @@ class BlackjackEngine:
             result = "WIN"
             payout = hand.bet_amount * 2
         elif player_value == dealer_value:
-            # 平局莊家贏
+            # 平局退還本金
             result = "PUSH"
-            payout = 0
+            payout = hand.bet_amount
         else:
             result = "LOSE"
             payout = 0
@@ -995,6 +995,7 @@ class BlackjackEngine:
 
             if hand.status == "BUST":
                 result = "BUST"
+                payout = 0  # 明確設定爆牌沒有賠付
             elif player_bj:
                 result = "BLACKJACK"
                 payout = hand.bet_amount * 2.5
@@ -1009,6 +1010,7 @@ class BlackjackEngine:
                 payout = hand.bet_amount  # 平局退還本金
             else:
                 result = "LOSE"
+                payout = 0  # 明確設定輸了沒有賠付
 
             hand.status = result
             hand.payout = payout

@@ -648,6 +648,9 @@ class BlackjackEngine:
         if len(betting_hands) == 0:
             return False
 
+        # 按座位號排序，確保從最小座位號開始
+        betting_hands.sort(key=lambda h: h.seat)
+
         room.deck = json.dumps(deck)
         room.dealer_cards = json.dumps(dealer_cards)
         room.status = "PLAYING"
@@ -960,6 +963,18 @@ class BlackjackEngine:
         room.status = "FINISHED"
         room.current_seat = 0
 
+        # 取得莊家玩家（如果是玩家當莊）
+        dealer_user = None
+        if room.dealer_seat > 0:
+            dealer_hand = session.exec(
+                select(BlackjackHand).where(
+                    BlackjackHand.room_id == room.id,
+                    BlackjackHand.seat == room.dealer_seat
+                )
+            ).first()
+            if dealer_hand:
+                dealer_user = session.get(User, dealer_hand.user_id)
+
         # 結算每位玩家（排除莊家座位）
         hands = session.exec(
             select(BlackjackHand).where(
@@ -968,16 +983,16 @@ class BlackjackEngine:
                 BlackjackHand.seat != room.dealer_seat
             )
         ).all()
-        
+
         for hand in hands:
             user = session.get(User, hand.user_id)
             player_cards = json.loads(hand.cards)
             player_value, _ = self.hand_value(player_cards)
             player_bj = self.is_blackjack(player_cards)
-            
+
             result = "LOSE"
             payout = 0
-            
+
             if hand.status == "BUST":
                 result = "BUST"
             elif player_bj:
@@ -991,13 +1006,32 @@ class BlackjackEngine:
                 payout = hand.bet_amount * 2
             elif player_value == dealer_value:
                 result = "PUSH"
+                payout = hand.bet_amount  # 平局退還本金
             else:
                 result = "LOSE"
-            
+
             hand.status = result
             hand.payout = payout
-            user.balance += payout
-            
+
+            # 資金流處理
+            if dealer_user:
+                # 玩家當莊：玩家與莊家之間轉移
+                if result in ["WIN", "BLACKJACK"]:
+                    # 玩家贏：從莊家扣款給玩家
+                    dealer_user.balance -= payout
+                    user.balance += payout
+                elif result == "PUSH":
+                    # 平局：退還玩家下注金額
+                    user.balance += payout
+                elif result in ["LOSE", "BUST"]:
+                    # 玩家輸：下注金額給莊家（已在下注時扣除）
+                    dealer_user.balance += hand.bet_amount
+
+                session.add(dealer_user)
+            else:
+                # 系統當莊：直接給玩家錢
+                user.balance += payout
+
             # 記錄歷史
             history = BlackjackHistory(
                 user_id=user.id,
@@ -1011,7 +1045,7 @@ class BlackjackEngine:
             session.add(history)
             session.add(hand)
             session.add(user)
-        
+
         session.add(room)
     
     def reset_room(self, room_id: int, user_id: int) -> dict:

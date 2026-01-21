@@ -200,6 +200,8 @@ class Trader:
         # 計算所需保證金（150%）
         short_value = price * quantity
         required_margin = short_value * 1.5
+        # 扣除賣出收入後，實際需要的淨保證金
+        net_margin_required = required_margin - short_value  # 0.5x
 
         # 更新持倉（需要先檢查是否有多單）
         portfolio = self.get_portfolio_item(user.id, stock_id)
@@ -208,25 +210,23 @@ class Trader:
             # 有多單，不允許做空
             return {"status": "error", "message": "您持有多頭倉位，請先賣出後再做空"}
 
-        # 檢查保證金是否足夠
-        if user.balance < required_margin:
+        # 檢查淨保證金是否足夠（賣出收入可抵扣）
+        if user.balance < net_margin_required:
             return {
                 "status": "error",
-                "message": f"保證金不足。需要 ${required_margin:.2f}，當前餘額 ${user.balance:.2f}"
+                "message": f"保證金不足。需要淨保證金 ${net_margin_required:.2f}（總保證金 ${required_margin:.2f} - 賣出收入 ${short_value:.2f}），當前餘額 ${user.balance:.2f}"
             }
 
         # 檢查單筆做空上限（不超過帳戶總值的 30%）
-        max_short_value = user.balance * 0.3
+        max_short_value = (user.balance + short_value) * 0.3  # 加上賣出收入後的總值
         if short_value > max_short_value:
             return {
                 "status": "error",
                 "message": f"超過單筆做空上限（帳戶總值 30% = ${max_short_value:.2f}）"
             }
 
-        # 做空資金流：賣出獲得現金 + 鎖定保證金
-        user.balance += short_value  # 賣出收入
-        user.balance -= required_margin  # 鎖定保證金
-        # 淨效果：balance 減少 0.5x (required_margin - short_value)
+        # 做空資金流：扣除淨保證金（保證金 - 賣出收入）
+        user.balance -= net_margin_required  # 淨效果：-0.5x
 
         if portfolio.quantity < 0:
             # 已有空單，繼續加空
@@ -319,30 +319,32 @@ class Trader:
         # 計算回補成本
         cover_cost = price * quantity
 
-        # 檢查餘額是否足夠（容錯 1%）
-        tolerance = cover_cost * 0.01
-        if user.balance < cover_cost - tolerance:
-            return {"status": "error", "message": f"餘額不足。需要 ${cover_cost:.2f}"}
-
-        # 調整成本（如果差一點點）
-        if user.balance < cover_cost:
-            cover_cost = user.balance
-
         # 計算已實現損益
         # 做空損益 = (開倉價 - 回補價) * 數量
         realized_pnl = (portfolio.average_cost - price) * quantity
 
-        # 計算退還的保證金
+        # 計算本次使用的保證金
         margin_ratio = quantity / short_qty
-        margin_to_return = portfolio.margin_locked * margin_ratio
+        margin_used = portfolio.margin_locked * margin_ratio
 
-        # 更新餘額
-        user.balance -= cover_cost  # 支付回補成本
-        user.balance += margin_to_return  # 退還保證金
+        # 從保證金中扣除回補成本，剩餘退還（可能是負數，需要補錢）
+        net_return = margin_used - cover_cost
+
+        # 如果需要補錢，檢查餘額是否足夠
+        if net_return < 0:
+            shortage = abs(net_return)
+            if user.balance < shortage:
+                return {
+                    "status": "error",
+                    "message": f"餘額不足以回補。虧損過大，需額外補入 ${shortage:.2f}，當前餘額 ${user.balance:.2f}"
+                }
+
+        # 更新餘額（保證金退還 - 回補成本）
+        user.balance += net_return
 
         # 更新持倉
         portfolio.quantity += quantity  # 減少空單（quantity 是負數，加上正數就是減少）
-        portfolio.margin_locked -= margin_to_return
+        portfolio.margin_locked -= margin_used
 
         # 如果完全平倉，清空相關欄位
         if portfolio.quantity == 0:
@@ -381,7 +383,8 @@ class Trader:
                 "timestamp": tx.timestamp.isoformat()
             },
             "balance": user.balance,
-            "margin_returned": margin_to_return,
+            "margin_returned": margin_used,  # 使用的保證金
+            "net_return": net_return,  # 實際退還金額（保證金 - 回補成本）
             "portfolio": {
                 "quantity": portfolio.quantity,
                 "average_cost": portfolio.average_cost

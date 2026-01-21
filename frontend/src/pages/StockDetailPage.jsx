@@ -52,9 +52,16 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
 
                 let message = `${actionText}成功！${stock.name} x${formatNumber(actualQty || quantity)}`;
 
-                // 顯示實際成交價（如果與顯示價格不同）
-                if (actualPrice && Math.abs(actualPrice - stock.price) > 0.01) {
-                    message += ` @ ${formatPrice(actualPrice)} (即時價格)`;
+                // 總是顯示實際成交價
+                if (actualPrice) {
+                    message += ` @ ${formatPrice(actualPrice)}`;
+
+                    // 如果價格有明顯差異，特別標註
+                    const priceDiff = actualPrice - stock.price;
+                    if (Math.abs(priceDiff) > 0.01) {
+                        const diffText = priceDiff > 0 ? `+${formatMoney(priceDiff)}` : formatMoney(priceDiff);
+                        message += ` (價差 ${diffText})`;
+                    }
                 }
 
                 // 顯示損益（賣出/回補時）
@@ -168,6 +175,8 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                     />
                 </div>
 
+                
+
                 {/* 預估金額顯示 */}
                 {!isShortPosition ? (
                     <div className="space-y-1">
@@ -215,23 +224,26 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                                 className="bg-green-600 hover:bg-green-700 w-full py-3"
                                 onClick={() => handleTrade('buy')}
                                 disabled={loading || !canBuy}
+                                title={`以市價買入 ${quantity} 股（約 ${formatMoney(cost)}）`}
                             >
-                                買入 🟢
+                                市價買入 🟢
                             </Button>
                             <Button
                                 className="bg-red-600 hover:bg-red-700 w-full py-3"
                                 onClick={() => handleTrade('sell')}
                                 disabled={loading || holdingQuantity <= 0}
+                                title={`以市價賣出 ${quantity} 股`}
                             >
-                                賣出 🔴
+                                市價賣出 🔴
                             </Button>
                         </div>
                         <Button
                             className="bg-orange-600 hover:bg-orange-700 w-full border border-orange-400/30 py-3"
                             onClick={() => handleTrade('short')}
                             disabled={loading || !canShort}
+                            title={`以市價做空 ${quantity} 股（保證金 ${formatMoney(shortMargin)}）`}
                         >
-                            做空 ⬇️ (需保證金 {formatMoney(shortMargin, 0)})
+                            市價做空 ⬇️ (保證金 {formatMoney(shortMargin, 0)})
                         </Button>
 
                         {/* 錯誤提示 */}

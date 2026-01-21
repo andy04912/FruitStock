@@ -342,13 +342,24 @@ class BlackjackEngine:
             user = session.get(User, user_id)
             if not user:
                 return {"status": "error", "message": "用戶不存在"}
-            
+
             if min_bet < 1000:
                 min_bet = 1000
-            
+
             if max_seats < 1 or max_seats > 6:
                 max_seats = 6
-            
+
+            # 玩家當莊：檢查資金是否足夠
+            if player_dealer:
+                # 最壞情況：所有玩家座位都下最低注並 BLACKJACK（2.5倍賠付）
+                # 莊家自己佔一個座位，所以是 max_seats - 1
+                worst_case_payout = min_bet * 2.5 * (max_seats - 1)
+                if user.balance < worst_case_payout:
+                    return {
+                        "status": "error",
+                        "message": f"當莊資金不足。需要至少 ${worst_case_payout:,.0f} 來承擔風險（最低下注 ${min_bet:,.0f} x {max_seats - 1} 位玩家 x 2.5 倍 BLACKJACK 賠率），當前餘額 ${user.balance:,.2f}"
+                    }
+
             room = BlackjackRoom(
                 owner_id=user_id,
                 name=name[:32],
@@ -574,7 +585,47 @@ class BlackjackEngine:
             
             if not hand:
                 return {"status": "error", "message": "請先加入房間"}
-            
+
+            # 玩家當莊：檢查莊家是否有足夠資金支付
+            if room.dealer_seat > 0:
+                # 找到莊家
+                dealer_hand = session.exec(
+                    select(BlackjackHand).where(
+                        BlackjackHand.room_id == room_id,
+                        BlackjackHand.seat == room.dealer_seat
+                    )
+                ).first()
+
+                if dealer_hand:
+                    dealer_user = session.get(User, dealer_hand.user_id)
+                    if dealer_user:
+                        # 計算已下注總額（不包含當前玩家）
+                        existing_hands = session.exec(
+                            select(BlackjackHand).where(
+                                BlackjackHand.room_id == room_id,
+                                BlackjackHand.status.in_(["BETTING"]),
+                                BlackjackHand.seat != room.dealer_seat,
+                                BlackjackHand.user_id != user_id  # 排除當前玩家
+                            )
+                        ).all()
+
+                        total_existing_bets = sum(h.bet_amount for h in existing_hands)
+
+                        # 加上這次下注後的最壞情況（所有玩家都 BLACKJACK）
+                        worst_case_payout = (total_existing_bets + bet_amount) * 2.5
+
+                        if dealer_user.balance < worst_case_payout:
+                            max_allowed_bet = (dealer_user.balance / 2.5) - total_existing_bets
+                            if max_allowed_bet < room.min_bet:
+                                return {
+                                    "status": "error",
+                                    "message": f"莊家資金不足以接受更多下注。莊家餘額 ${dealer_user.balance:,.2f}，已接受下注 ${total_existing_bets:,.2f}"
+                                }
+                            return {
+                                "status": "error",
+                                "message": f"下注金額過高。莊家最多還能接受 ${max_allowed_bet:,.2f} 的下注（莊家餘額 ${dealer_user.balance:,.2f}）"
+                            }
+
             # 扣款
             user.balance -= bet_amount
             hand.bet_amount = bet_amount

@@ -219,13 +219,13 @@ const MultiGame = ({ user, refreshUser }) => {
     }, []);
     
     // WebSocket 連線
-    useEffect(() => { 
+    useEffect(() => {
         if (!currentRoom) return;
-        
+
         // 建立 WebSocket 連線
         const wsUrl = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
         const ws = new WebSocket(`${wsUrl}api/ws/blackjack/${currentRoom}`);
-        
+
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
@@ -236,16 +236,27 @@ const MultiGame = ({ user, refreshUser }) => {
                 console.error('WebSocket parse error:', e);
             }
         };
-        
+
         ws.onerror = (e) => console.error('WebSocket error:', e);
         ws.onclose = () => console.log('WebSocket closed');
-        
+
         return () => {
             if (ws.readyState === WebSocket.OPEN) {
                 ws.close();
             }
         };
     }, [currentRoom]);
+
+    // 監聽遊戲狀態，當結束時刷新用戶餘額
+    useEffect(() => {
+        if (roomState?.room?.status === 'FINISHED') {
+            // 延遲一點點確保後端已完成結算
+            const timer = setTimeout(() => {
+                refreshUser();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [roomState?.room?.status, refreshUser]);
     
     const createRoom = async () => {
         setLoading(true);
@@ -328,7 +339,11 @@ const MultiGame = ({ user, refreshUser }) => {
         try {
             const token = localStorage.getItem('token');
             const res = await axios.post(`${API_URL}api/blackjack/reset/${currentRoom}`, {}, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.data.status === 'success') { toast.success('新一局開始！'); loadRoomState(currentRoom); }
+            if (res.data.status === 'success') {
+                toast.success('新一局開始！');
+                loadRoomState(currentRoom);
+                refreshUser(); // 重置時刷新用戶餘額
+            }
             else toast.error(res.data.message);
         } catch (e) { toast.error('重置失敗'); }
     };

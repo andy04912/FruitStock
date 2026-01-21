@@ -600,7 +600,7 @@ export default function ProfilePage() {
                                             <div className="text-right">
                                                 <div className="font-mono">{formatPrice(t.price)}</div>
                                                 {t.profit !== null && (
-                                                    <div className={`text-xs ${t.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    <div className={`text-xs ${t.profit >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                                                         {t.profit >= 0 ? '+' : ''}{formatMoney(t.profit)}
                                                     </div>
                                                 )}
@@ -644,7 +644,7 @@ export default function ProfilePage() {
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
                                     <div className="text-zinc-400 text-sm">淨損益</div>
                                     <div className={`text-2xl font-bold ${
-                                        (profile?.race_stats?.net_profit || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                                        (profile?.race_stats?.net_profit || 0) >= 0 ? 'text-red-400' : 'text-green-400'
                                     }`}>
                                         {formatMoney(profile?.race_stats?.net_profit)}
                                     </div>
@@ -679,7 +679,7 @@ export default function ProfilePage() {
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
                                     <div className="text-zinc-400 text-sm">淨損益</div>
                                     <div className={`text-2xl font-bold ${
-                                        (profile?.slots_stats?.net_profit || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                                        (profile?.slots_stats?.net_profit || 0) >= 0 ? 'text-red-400' : 'text-green-400'
                                     }`}>
                                         {formatMoney(profile?.slots_stats?.net_profit)}
                                     </div>
@@ -708,9 +708,9 @@ export default function ProfilePage() {
                                 <div className="text-center">
                                     <div className="text-zinc-400 text-sm">淨損益</div>
                                     <div className={`text-2xl font-black ${
-                                        ((profile?.race_stats?.net_profit || 0) + (profile?.slots_stats?.net_profit || 0)) >= 0 
-                                            ? 'text-green-400' 
-                                            : 'text-red-400'
+                                        ((profile?.race_stats?.net_profit || 0) + (profile?.slots_stats?.net_profit || 0)) >= 0
+                                            ? 'text-red-400'
+                                            : 'text-green-400'
                                     }`}>
                                         {formatMoney((profile?.race_stats?.net_profit || 0) + (profile?.slots_stats?.net_profit || 0))}
                                     </div>

@@ -201,6 +201,13 @@ class Trader:
         short_value = price * quantity
         required_margin = short_value * 1.5
 
+        # 更新持倉（需要先檢查是否有多單）
+        portfolio = self.get_portfolio_item(user.id, stock_id)
+
+        if portfolio.quantity > 0:
+            # 有多單，不允許做空
+            return {"status": "error", "message": "您持有多頭倉位，請先賣出後再做空"}
+
         # 檢查保證金是否足夠
         if user.balance < required_margin:
             return {
@@ -216,27 +223,12 @@ class Trader:
                 "message": f"超過單筆做空上限（帳戶總值 30% = ${max_short_value:.2f}）"
             }
 
-        # 扣除保證金
-        user.balance -= required_margin
+        # 做空資金流：賣出獲得現金 + 鎖定保證金
+        user.balance += short_value  # 賣出收入
+        user.balance -= required_margin  # 鎖定保證金
+        # 淨效果：balance 減少 0.5x (required_margin - short_value)
 
-        # 更新持倉
-        portfolio = self.get_portfolio_item(user.id, stock_id)
-
-        if portfolio.quantity > 0:
-            # 有多單，需要先平掉多單再做空
-            if portfolio.quantity >= quantity:
-                # 多單足夠抵消 - 實際上是賣出
-                portfolio.quantity -= quantity
-                user.balance += required_margin  # 退還保證金
-                return {"status": "error", "message": "您持有多頭倉位，請先賣出後再做空"}
-            else:
-                # 多單不足，先平掉多單再做空
-                remaining_short = quantity - portfolio.quantity
-                portfolio.quantity = -remaining_short
-                portfolio.average_cost = price
-                portfolio.short_entry_price = price
-                portfolio.margin_locked = remaining_short * price * 1.5
-        elif portfolio.quantity < 0:
+        if portfolio.quantity < 0:
             # 已有空單，繼續加空
             old_value = abs(portfolio.quantity) * portfolio.average_cost
             new_value = quantity * price

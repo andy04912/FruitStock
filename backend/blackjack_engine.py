@@ -526,6 +526,10 @@ class BlackjackEngine:
     def leave_room(self, user_id: int, room_id: int) -> dict:
         """離開房間"""
         with self.session_factory() as session:
+            room = session.get(BlackjackRoom, room_id)
+            if not room:
+                return {"status": "error", "message": "房間不存在"}
+
             # 允許任何狀態離開
             hand = session.exec(
                 select(BlackjackHand).where(
@@ -533,28 +537,74 @@ class BlackjackEngine:
                     BlackjackHand.user_id == user_id
                 )
             ).first()
-            
+
             if not hand:
                 return {"status": "error", "message": "你不在房間中"}
-            
+
+            # 檢查是否為莊家離場
+            is_dealer_leaving = room.dealer_seat > 0 and hand.seat == room.dealer_seat
+
+            if is_dealer_leaving:
+                # 莊家離場：解散房間並退還所有玩家已下注金額
+                all_hands = session.exec(
+                    select(BlackjackHand).where(
+                        BlackjackHand.room_id == room_id
+                    )
+                ).all()
+
+                # 退還所有玩家已下注但未結算的金額
+                refunded_users = []
+                for h in all_hands:
+                    if h.bet_amount > 0 and h.status in ["BETTING", "PLAYING"]:
+                        user = session.get(User, h.user_id)
+                        if user:
+                            user.balance += h.bet_amount
+                            session.add(user)
+                            refunded_users.append(user.username)
+
+                # 刪除所有手牌
+                for h in all_hands:
+                    session.delete(h)
+
+                # 刪除房間
+                session.delete(room)
+                session.commit()
+
+                # 廣播房間解散訊息給所有玩家
+                try:
+                    from blackjack_ws import broadcast_room_state
+                    broadcast_room_state(room_id, {
+                        "status": "disbanded",
+                        "message": "莊家離場，房間已解散",
+                        "refunded": len(refunded_users) > 0
+                    })
+                except Exception as e:
+                    print(f"[Blackjack] Broadcast error on room disband: {e}")
+
+                return {
+                    "status": "success",
+                    "message": "莊家離場，房間已解散",
+                    "room_disbanded": True
+                }
+
+            # 普通玩家離開
             session.delete(hand)
             session.flush()
-            
+
             # 檢查房間是否還有人（包含所有狀態）
             remaining = session.exec(
                 select(BlackjackHand).where(
                     BlackjackHand.room_id == room_id
                 )
             ).all()
-            
+
             if len(remaining) == 0:
                 # 沒人了，刪除房間
-                room = session.get(BlackjackRoom, room_id)
                 if room:
                     session.delete(room)
-            
+
             session.commit()
-            
+
             return {"status": "success"}
     
     def place_bet(self, user_id: int, room_id: int, bet_amount: float) -> dict:

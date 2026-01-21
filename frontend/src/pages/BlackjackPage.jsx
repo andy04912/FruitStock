@@ -231,6 +231,17 @@ const MultiGame = ({ user, refreshUser }) => {
                 const data = JSON.parse(event.data);
                 if (data.status === 'success') {
                     setRoomState(data);
+                } else if (data.status === 'disbanded') {
+                    // 房間被解散（莊家離場）
+                    toast.warning(data.message || '房間已解散');
+                    if (data.refunded) {
+                        toast.info('已退還下注金額');
+                        refreshUser(); // 刷新餘額
+                    }
+                    // 離開房間
+                    setCurrentRoom(null);
+                    setRoomState(null);
+                    loadRooms();
                 }
             } catch (e) {
                 console.error('WebSocket parse error:', e);
@@ -283,9 +294,22 @@ const MultiGame = ({ user, refreshUser }) => {
     const leaveRoom = async () => {
         try {
             const token = localStorage.getItem('token');
-            await axios.post(`${API_URL}api/blackjack/leave/${currentRoom}`, {}, { headers: { Authorization: `Bearer ${token}` } });
-            setCurrentRoom(null); setRoomState(null); loadRooms();
-        } catch (e) { console.error(e); }
+            const res = await axios.post(`${API_URL}api/blackjack/leave/${currentRoom}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+
+            if (res.data.room_disbanded) {
+                toast.warning(res.data.message || '莊家離場，房間已解散');
+            } else {
+                toast.success('已離開房間');
+            }
+
+            setCurrentRoom(null);
+            setRoomState(null);
+            loadRooms();
+            refreshUser(); // 刷新用戶餘額（可能有退款）
+        } catch (e) {
+            console.error(e);
+            toast.error('離開失敗');
+        }
     };
     
     const placeBet = async () => {
@@ -425,6 +449,22 @@ const MultiGame = ({ user, refreshUser }) => {
                     })()}
                 </div>
                 
+                {/* 總下注金額顯示 */}
+                {(() => {
+                    const nonDealerPlayers = roomState.players.filter(p => p.seat !== roomState.room.dealer_seat);
+                    const totalBets = nonDealerPlayers.reduce((sum, p) => sum + (p.bet_amount || 0), 0);
+
+                    if (totalBets > 0) {
+                        return (
+                            <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-3 text-center">
+                                <div className="text-sm text-blue-300">總下注金額</div>
+                                <div className="text-2xl font-bold text-blue-100">${totalBets.toLocaleString()}</div>
+                            </div>
+                        );
+                    }
+                    return null;
+                })()}
+
                 {/* 玩家區（排除莊家座位） */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {roomState.players.filter(p => p.seat !== roomState.room.dealer_seat).map(p => (

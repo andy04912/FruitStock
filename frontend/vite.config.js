@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '127.0.0.1', // Changed to 3006 to avoid Windows Hyper-V reserved ports (EACCES on 5173)
+    port:3006,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',

@@ -42,7 +42,7 @@ services:
     container_name: stock_sim_frontend
     restart: always
     ports:
-      - "3002:80" # Map NAS port 3002 to Nginx port 80
+      - "3006:80" 
     depends_on:
       - backend
 

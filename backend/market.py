@@ -257,14 +257,15 @@ class MarketEngine:
                 is_major_event = False
                 
                 if market_regime == "BOOM":
-                    regime_bias = 0.0004
-                    regime_vol_mult = 1.3
+                    regime_bias = random.uniform(0.0003, 0.0005)  # 隨機化偏差 0.03-0.05%
+                    regime_vol_mult = random.uniform(1.2, 1.4)
                 elif market_regime == "CRASH":
-                    regime_bias = -0.0006
-                    regime_vol_mult = 1.5
+                    # 降低 CRASH 的負偏差（從 -0.0006 降到 -0.0004）
+                    regime_bias = random.uniform(-0.0005, -0.0003)  # -0.05% ~ -0.03%
+                    regime_vol_mult = random.uniform(1.3, 1.6)
                     is_major_event = True  # 崩盤是大事件
                 elif market_regime == "CHAOS":
-                    regime_vol_mult = 2.5
+                    regime_vol_mult = random.uniform(2.0, 3.0)  # 隨機化波動倍數
                     is_major_event = True  # 混亂也是大事件
                 
                 # 市場隨機波動
@@ -287,54 +288,94 @@ class MarketEngine:
                     herd_effect = herd_direction * random.uniform(0.0003, 0.0008)
                 
                 # 6. 基準價動態漂移（形成長期趨勢，增強隨機性）
-                # 增強漂移幅度，讓基準價更動態
-                base_drift = random.gauss(0, 0.0008)  # 從 0.0002 增加到 0.0008
+                # 但限制下漂速度，防止基準價持續下跌
+                base_drift = random.gauss(0, 0.0005)  # 降低漂移幅度（從 0.0008 降到 0.0005）
                 if stock.symbol not in self.base_prices:
                     self.base_prices[stock.symbol] = base_price
-                self.base_prices[stock.symbol] *= (1 + base_drift)
-                
+
+                # 取得初始價格（用於限制基準價不會跌太低）
+                initial_price = None
+                for lst in [INITIAL_FRUITS, INITIAL_MEATS, INITIAL_ROOTS]:
+                    for item in lst:
+                        if item["symbol"] == stock.symbol:
+                            initial_price = item["price"]
+                            break
+                    if initial_price:
+                        break
+
+                # 應用漂移
+                new_base = self.base_prices[stock.symbol] * (1 + base_drift)
+
+                # 限制基準價下限：不低於初始價格的 50%（動態下限）
+                if initial_price:
+                    base_floor = initial_price * 0.50
+                    new_base = max(new_base, base_floor)
+
+                self.base_prices[stock.symbol] = new_base
+
                 # 小機率重設基準價為當前價格（打破舊區間）
                 if random.random() < 0.002:  # 0.2% 機率
                     self.base_prices[stock.symbol] = stock.price
                     print(f"[Market] 📊 {stock.name} 基準價重設為 ${stock.price:.2f}")
-                
+
+                # 絕對最低限制（保底）
                 self.base_prices[stock.symbol] = max(1.0, self.base_prices[stock.symbol])
                 base_price = self.base_prices[stock.symbol]
                 
-                # 7. 重力回歸（防止價格偏離太遠）
-                # 但加入隨機變異，讓觸發點不可預測
+                # 7. 重力回歸（防止價格偏離太遠）- 強化版
+                # 增強回歸力，但保留 10% 突破機率
                 deviation = (stock.price - base_price) / base_price
                 gravity = 0.0
-                
-                # 重力觸發點隨機化：±15% 變異
-                gravity_threshold_high = 0.50 * random.uniform(0.85, 1.20)  # 42.5% ~ 60%
-                gravity_threshold_mid = 0.35 * random.uniform(0.85, 1.20)   # 29.75% ~ 42%
-                
-                # 假突破機制：10% 機率暫時關閉重力
+
+                # 重力觸發點隨機化：±20% 變異（增加不可預測性）
+                gravity_threshold_extreme = 0.60 * random.uniform(0.80, 1.25)  # 48% ~ 75%
+                gravity_threshold_high = 0.40 * random.uniform(0.80, 1.25)     # 32% ~ 50%
+                gravity_threshold_mid = 0.25 * random.uniform(0.80, 1.25)      # 20% ~ 31%
+
+                # 假突破機制：10% 機率暫時關閉重力（允許續跌/續漲）
                 is_breakthrough = (market_regime == "CHAOS") or (random.random() < 0.10)
-                
-                # 假突破後快速拉回：5% 機率觸發強力回拉
-                sudden_reversal = random.random() < 0.05 and abs(deviation) > 0.25
-                
-                if is_breakthrough and not sudden_reversal:
+
+                # 假突破後快速拉回：8% 機率觸發強力反轉
+                sudden_reversal = random.random() < 0.08 and abs(deviation) > 0.20
+
+                # 極端偏離檢測：偏離超過 60% 觸發緊急回歸
+                extreme_deviation = abs(deviation) > gravity_threshold_extreme
+
+                if is_breakthrough and not sudden_reversal and not extreme_deviation:
+                    # 突破模式：暫時關閉重力
                     gravity = 0
                     if abs(deviation) > 0.3:
-                        print(f"[Market] 🚀 {stock.name} 突破中！偏離 {deviation*100:.1f}%")
+                        direction_text = "暴漲" if deviation > 0 else "暴跌"
+                        print(f"[Market] 🚀 {stock.name} {direction_text}突破中！偏離 {deviation*100:.1f}%")
+
                 elif sudden_reversal:
-                    # 假突破後強力回拉
-                    gravity = -deviation * 0.015
-                    print(f"[Market] ⚡ {stock.name} 假突破！快速回拉中")
+                    # 假突破快速反轉：強力拉回
+                    reversal_strength = random.uniform(0.020, 0.035)  # 2-3.5% 反轉力
+                    gravity = -deviation * reversal_strength
+                    print(f"[Market] ⚡ {stock.name} 假突破反轉！快速回拉 {reversal_strength*100:.1f}%")
+
+                elif extreme_deviation:
+                    # 極端偏離：超強回歸力（不可突破）
+                    extreme_strength = random.uniform(0.015, 0.025)  # 1.5-2.5%
+                    gravity = -deviation * extreme_strength
+                    if random.random() < 0.1:  # 10% 機率顯示
+                        print(f"[Market] 🔴 {stock.name} 極端偏離 {deviation*100:.1f}%，觸發強制回歸")
+
                 elif abs(deviation) > gravity_threshold_high:
-                    gravity = -deviation * random.uniform(0.006, 0.010)  # 隨機強度
+                    # 高度偏離：強回歸（隨機強度 0.8-1.5%）
+                    gravity = -deviation * random.uniform(0.008, 0.015)
+
                 elif abs(deviation) > gravity_threshold_mid:
-                    gravity = -deviation * random.uniform(0.002, 0.006)  # 隨機強度
-                
-                # ROOT 類別更穩定
+                    # 中度偏離：中等回歸（隨機強度 0.3-0.8%）
+                    gravity = -deviation * random.uniform(0.003, 0.008)
+
+                # ROOT 類別更穩定（但仍保留隨機性）
                 if category == 'ROOT':
                     if not is_breakthrough:
-                        gravity = -deviation * 0.012
-                    total_individual *= 0.5  # ROOT 個別趨勢減半
-                    total_market *= 0.3  # ROOT 市場影響也減弱
+                        # ROOT 回歸更強，但仍有隨機性
+                        gravity = -deviation * random.uniform(0.012, 0.018)
+                    total_individual *= random.uniform(0.45, 0.55)  # 40-50% 影響（微隨機）
+                    total_market *= random.uniform(0.25, 0.35)      # 25-35% 影響
                 
                 # 8. 事件影響（從 DB 讀取）
                 statement = select(EventLog).where(
@@ -353,9 +394,36 @@ class MarketEngine:
 
                 # FINAL CALCULATION
                 change_percent = total_individual + total_market + gravity + herd_effect + event_force + sniper_effect
-                
+
                 # Apply
                 stock.price *= (1 + change_percent)
+
+                # 動態下限保護：使用初始價格的 20-35% 作為軟下限
+                # 計算該股票的初始價格（來自預設列表）
+                initial_price = None
+                for lst in [INITIAL_FRUITS, INITIAL_MEATS, INITIAL_ROOTS]:
+                    for item in lst:
+                        if item["symbol"] == stock.symbol:
+                            initial_price = item["price"]
+                            break
+                    if initial_price:
+                        break
+
+                # 動態軟下限（有隨機性）
+                if initial_price:
+                    # 下限範圍隨機：初始價格的 20-35%（每次 tick 都重新計算，增加不可預測性）
+                    soft_floor = initial_price * random.uniform(0.20, 0.35)
+
+                    # 如果跌破軟下限，有 85% 機率觸發反彈
+                    if stock.price < soft_floor and random.random() < 0.85:
+                        # 反彈力度隨機：拉回 2-8%
+                        bounce_strength = random.uniform(1.02, 1.08)
+                        stock.price = soft_floor * bounce_strength
+
+                        if random.random() < 0.05:  # 5% 機率顯示訊息
+                            print(f"[Market] 🛡️ {stock.name} 觸底反彈！價格 ${stock.price:.2f}")
+
+                # 絕對硬下限：$0.01（最終保護）
                 stock.price = max(0.01, round(stock.price, 2)) 
 
 

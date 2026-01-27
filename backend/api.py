@@ -7,7 +7,7 @@ import json
 import random
 
 from database import get_session, engine
-from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet, Friendship, UserDailySnapshot, SlotSpin
+from models import User, Portfolio, Stock, BonusLog, StockPriceHistory, Transaction, Watchlist, Horse, Race, Bet, Friendship, UserDailySnapshot, SlotSpin, LeaderboardSnapshot
 from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -173,10 +173,9 @@ def get_leaderboard(session: Session = Depends(get_session)):
     leaderboard = []
     for user in users:
         portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
-        stock_value = 0.0
-        for p in portfolios:
-            stock_value += p.quantity * stock_map.get(p.stock_id, 0)
-        
+        # 正確計算市值：多頭 + 空頭（用絕對值）
+        stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
+
         net_worth = user.balance + stock_value
         leaderboard.append({
             "id": user.id,
@@ -791,7 +790,8 @@ def get_friends_list(current_user: User = Depends(get_current_user), session: Se
     results = []
     for friend in friends:
         portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == friend.id)).all()
-        stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+        # 正確計算市值：多頭 + 空頭（用絕對值）
+        stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
         net_worth = friend.balance + stock_value
         
         results.append({
@@ -816,7 +816,8 @@ def get_friends_leaderboard(current_user: User = Depends(get_current_user), sess
     stocks = session.exec(select(Stock)).all()
     stock_map = {s.id: s.price for s in stocks}
     my_portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == current_user.id)).all()
-    my_stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in my_portfolios)
+    # 正確計算市值：多頭 + 空頭（用絕對值）
+    my_stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in my_portfolios)
     my_net_worth = current_user.balance + my_stock_value
     
     # 加入自己
@@ -851,18 +852,23 @@ def get_profile(current_user: User = Depends(get_current_user), session: Session
     stocks = session.exec(select(Stock)).all()
     stock_map = {s.id: s.price for s in stocks}
     portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == current_user.id)).all()
-    stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
-    
+    # 正確計算市值：多頭 + 空頭（用絕對值）
+    stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
+
     # 計算已實現損益
     transactions = session.exec(select(Transaction).where(Transaction.user_id == current_user.id)).all()
     realized_pnl = sum(t.profit or 0 for t in transactions)
-    
-    # 計算未實現損益
+
+    # 計算未實現損益（包含多頭和空頭）
     unrealized_pnl = 0
     for p in portfolios:
+        current_price = stock_map.get(p.stock_id, 0)
         if p.quantity > 0:
-            current_price = stock_map.get(p.stock_id, 0)
+            # 多頭：現價 - 成本
             unrealized_pnl += (current_price - p.average_cost) * p.quantity
+        elif p.quantity < 0:
+            # 空頭：成本 - 現價（價格下跌才賺錢）
+            unrealized_pnl += (p.average_cost - current_price) * abs(p.quantity)
     
     # 賭場統計
     bets = session.exec(select(Bet).where(Bet.user_id == current_user.id)).all()
@@ -1132,3 +1138,104 @@ def blackjack_reset(room_id: int, current_user: User = Depends(get_current_user)
         broadcast_room_state(room_id, room_state)
     return result
 
+
+# ============ 歷史排行榜 & 名人堂 API ============
+
+@router.get("/leaderboard/history")
+def get_leaderboard_history(date: str = None, session: Session = Depends(get_session)):
+    """
+    取得歷史排行榜（某日期的排名快照）
+    - date: YYYY-MM-DD 格式，不提供則返回最新一天的快照
+    """
+    if date:
+        snapshots = session.exec(
+            select(LeaderboardSnapshot)
+            .where(LeaderboardSnapshot.date == date)
+            .order_by(LeaderboardSnapshot.rank.asc())
+        ).all()
+    else:
+        # 取得最新日期
+        latest_date_result = session.exec(
+            select(LeaderboardSnapshot.date)
+            .order_by(LeaderboardSnapshot.date.desc())
+        ).first()
+
+        if not latest_date_result:
+            return {"date": None, "leaderboard": []}
+
+        latest_date = latest_date_result
+        snapshots = session.exec(
+            select(LeaderboardSnapshot)
+            .where(LeaderboardSnapshot.date == latest_date)
+            .order_by(LeaderboardSnapshot.rank.asc())
+        ).all()
+
+    result = []
+    for snap in snapshots:
+        rank_change = None
+        if snap.previous_rank:
+            rank_change = snap.previous_rank - snap.rank  # 正數表示上升
+
+        result.append({
+            "rank": snap.rank,
+            "user_id": snap.user_id,
+            "username": snap.username,
+            "nickname": snap.nickname,
+            "display_name": snap.nickname or snap.username,
+            "net_worth": snap.net_worth,
+            "previous_rank": snap.previous_rank,
+            "rank_change": rank_change
+        })
+
+    return {
+        "date": snapshots[0].date if snapshots else None,
+        "leaderboard": result
+    }
+
+@router.get("/leaderboard/dates")
+def get_available_dates(session: Session = Depends(get_session)):
+    """取得所有有快照記錄的日期列表"""
+    dates = session.exec(
+        select(LeaderboardSnapshot.date)
+        .distinct()
+        .order_by(LeaderboardSnapshot.date.desc())
+    ).all()
+
+    return {"dates": dates}
+
+@router.get("/leaderboard/hall-of-fame")
+def get_hall_of_fame(session: Session = Depends(get_session)):
+    """
+    名人堂：展示各種榮譽記錄
+    """
+    # 1. 登頂次數排行（rank = 1）
+    champions = session.exec(
+        select(
+            LeaderboardSnapshot.user_id,
+            LeaderboardSnapshot.username,
+            LeaderboardSnapshot.nickname
+        )
+        .where(LeaderboardSnapshot.rank == 1)
+    ).all()
+
+    champion_counts = {}
+    champion_info = {}
+    for champ in champions:
+        user_id = champ.user_id
+        champion_counts[user_id] = champion_counts.get(user_id, 0) + 1
+        champion_info[user_id] = {
+            "username": champ.username,
+            "nickname": champ.nickname,
+            "display_name": champ.nickname or champ.username
+        }
+
+    top_champions = sorted(
+        [{"user_id": uid, **champion_info[uid], "champion_days": count}
+         for uid, count in champion_counts.items()],
+        key=lambda x: x["champion_days"],
+        reverse=True
+    )[:10]
+
+    return {
+        "top_champions": top_champions
+    }

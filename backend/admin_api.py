@@ -294,9 +294,9 @@ def get_all_users(session: Session = Depends(get_session)):
 
     result = []
     for user in users:
-        # 計算股票市值
+        # 計算股票市值（正確處理空頭）
         portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
-        stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+        stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
 
         result.append({
             "id": user.id,
@@ -502,7 +502,8 @@ def get_system_stats(session: Session = Depends(get_session)):
     for user in users:
         portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
         for p in portfolios:
-            total_stock_value += p.quantity * stock_map.get(p.stock_id, 0)
+            # 正確計算市值：多頭 + 空頭（用絕對值）
+            total_stock_value += abs(p.quantity) * stock_map.get(p.stock_id, 0)
     
     # 今日交易
     today = datetime.now().date()

@@ -70,6 +70,13 @@ export const LineChart = ({
             localization: {
                 locale: 'zh-TW',
                 dateFormat: 'yyyy/MM/dd',
+                priceFormatter: (price) => {
+                    // 格式化 Y 軸數值，加上千位分隔符
+                    return new Intl.NumberFormat('en-US', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    }).format(price);
+                },
             },
             rightPriceScale: {
                 borderColor: gridColor,

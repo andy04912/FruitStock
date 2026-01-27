@@ -2,14 +2,19 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent } from "../components/ui/components";
-import { Trophy, Medal, Crown, TrendingUp, User, Users } from "lucide-react";
+import { Trophy, Medal, Crown, TrendingUp, User, Users, History, Star, ArrowUp, ArrowDown, Minus, Calendar } from "lucide-react";
+import { formatMoney } from "../utils/format";
 
 export default function LeaderboardPage() {
     const { API_URL, user, token } = useAuth();
     const [leaders, setLeaders] = useState([]);
     const [friendsLeaderboard, setFriendsLeaderboard] = useState([]);
+    const [historicalLeaderboard, setHistoricalLeaderboard] = useState([]);
+    const [hallOfFame, setHallOfFame] = useState(null);
+    const [availableDates, setAvailableDates] = useState([]);
+    const [selectedDate, setSelectedDate] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState("global"); // global, friends
+    const [activeTab, setActiveTab] = useState("global"); // global, friends, history, hall
 
     const headers = { Authorization: `Bearer ${token}` };
 
@@ -33,15 +38,58 @@ export default function LeaderboardPage() {
         }
     };
 
+    const fetchHistoricalLeaderboard = async (date = null) => {
+        try {
+            const url = date
+                ? `${API_URL}/leaderboard/history?date=${date}`
+                : `${API_URL}/leaderboard/history`;
+            const res = await axios.get(url);
+            setHistoricalLeaderboard(res.data.leaderboard || []);
+            if (!selectedDate && res.data.date) {
+                setSelectedDate(res.data.date);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const fetchAvailableDates = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/leaderboard/dates`);
+            setAvailableDates(res.data.dates || []);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const fetchHallOfFame = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/leaderboard/hall-of-fame`);
+            setHallOfFame(res.data);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
     useEffect(() => {
         fetchLeaders();
         fetchFriendsLeaderboard();
+        fetchHistoricalLeaderboard();
+        fetchAvailableDates();
+        fetchHallOfFame();
+
         const interval = setInterval(() => {
             fetchLeaders();
             fetchFriendsLeaderboard();
         }, 5000);
         return () => clearInterval(interval);
     }, [API_URL]);
+
+    useEffect(() => {
+        if (selectedDate) {
+            fetchHistoricalLeaderboard(selectedDate);
+        }
+    }, [selectedDate]);
 
     if (loading && leaders.length === 0) {
         return (
@@ -51,15 +99,21 @@ export default function LeaderboardPage() {
         );
     }
 
-    const currentLeaders = activeTab === "global" ? leaders : friendsLeaderboard;
+    let currentLeaders = [];
+    if (activeTab === "global") {
+        currentLeaders = leaders;
+    } else if (activeTab === "friends") {
+        currentLeaders = friendsLeaderboard;
+    } else if (activeTab === "history") {
+        currentLeaders = historicalLeaderboard;
+    }
+
     const top3 = currentLeaders.slice(0, 3);
     const rest = currentLeaders.slice(3);
 
-    const formatMoney = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-
     return (
         <div className="container mx-auto p-4 max-w-screen-xl min-h-[calc(100vh-80px)] space-y-8">
-            <div className="flex justify-center gap-2 mb-6">
+            <div className="flex justify-center gap-2 mb-6 flex-wrap">
                 <button
                     onClick={() => setActiveTab("global")}
                     className={`px-6 py-2 rounded-full font-bold transition-all ${
@@ -80,6 +134,26 @@ export default function LeaderboardPage() {
                 >
                     👥 好友排行
                 </button>
+                <button
+                    onClick={() => setActiveTab("history")}
+                    className={`px-6 py-2 rounded-full font-bold transition-all ${
+                        activeTab === "history"
+                            ? "bg-gradient-to-r from-blue-400 to-purple-500 text-black"
+                            : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                    }`}
+                >
+                    📅 歷史排行
+                </button>
+                <button
+                    onClick={() => setActiveTab("hall")}
+                    className={`px-6 py-2 rounded-full font-bold transition-all ${
+                        activeTab === "hall"
+                            ? "bg-gradient-to-r from-pink-400 to-rose-500 text-black"
+                            : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                    }`}
+                >
+                    ⭐ 名人堂
+                </button>
             </div>
             {/* Header */}
             <div className="text-center space-y-2 mb-8">
@@ -92,12 +166,69 @@ export default function LeaderboardPage() {
             {/* Tabs */}
             
 
+            {/* 歷史排行日期選擇器 */}
+            {activeTab === "history" && availableDates.length > 0 && (
+                <div className="flex justify-center mb-6">
+                    <div className="flex items-center gap-2 bg-zinc-900/50 border border-zinc-700 rounded-lg p-2">
+                        <Calendar className="h-4 w-4 text-zinc-400" />
+                        <select
+                            value={selectedDate || ""}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="bg-transparent text-zinc-200 outline-none cursor-pointer"
+                        >
+                            {availableDates.map(date => (
+                                <option key={date} value={date} className="bg-zinc-800">
+                                    {date}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            )}
+
             {/* Empty State for Friends */}
             {activeTab === "friends" && friendsLeaderboard.length <= 1 ? (
                 <div className="text-center py-12 text-zinc-400 animate-in fade-in zoom-in duration-500">
                     <Users className="h-16 w-16 mx-auto mb-4 opacity-50" />
                     <p className="text-lg">還沒有好友</p>
                     <p className="text-sm mt-2">到「資產分佈」頁面加好友吧！</p>
+                </div>
+            ) : activeTab === "hall" ? (
+                <div className="max-w-4xl mx-auto space-y-6">
+                    {/* 名人堂內容 */}
+                    {hallOfFame && hallOfFame.top_champions && hallOfFame.top_champions.length > 0 && (
+                        <Card className="bg-gradient-to-br from-yellow-900/30 to-orange-900/30 border-yellow-500/30">
+                            <CardContent className="p-6">
+                                <h2 className="text-2xl font-black mb-4 flex items-center gap-2 text-yellow-400">
+                                    <Crown className="h-6 w-6" />
+                                    登頂王 - 榮登第一次數
+                                </h2>
+                                <div className="space-y-2">
+                                    {hallOfFame.top_champions.map((champ, idx) => (
+                                        <div key={champ.user_id} className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-lg">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">
+                                                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
+                                                </span>
+                                                <span className="font-bold text-lg">{champ.display_name}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-yellow-400 font-black text-xl">{champ.champion_days} 天</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {!hallOfFame || (hallOfFame.top_champions && hallOfFame.top_champions.length === 0) && (
+                        <div className="text-center py-12 text-zinc-400">
+                            <Star className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                            <p className="text-lg">名人堂尚未開啟</p>
+                            <p className="text-sm mt-2">系統會每天記錄排名快照，請明天再來查看！</p>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <>
@@ -204,42 +335,65 @@ export default function LeaderboardPage() {
                                 </div>
                             )}
                     
-                    {rest.map((player, index) => (
-                        <div
-                            key={player.id || player.username}
-                            className={`group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:shadow-lg ${
-                                player.is_me || player.username === user?.username
-                                    ? "border-primary/50 bg-primary/10 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                                    : ""
-                            }`}
-                        >
-                            <div className="flex items-center gap-6">
-                                <div className="font-mono text-muted-foreground w-8 text-center text-lg">
-                                    #{player.rank || index + 4}
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-muted-foreground font-bold">
-                                        {(player.display_name || player.username).charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className={`font-bold text-lg ${
-                                            player.is_me || player.username === user?.username
-                                                ? "text-primary"
-                                                : "text-slate-200"
-                                        }`}>
-                                            {player.display_name || player.username}
-                                        </span>
-                                        {(player.is_me || player.username === user?.username) && (
-                                            <span className="text-[10px] uppercase tracking-widest text-primary font-bold">YOU</span>
+                    {rest.map((player, index) => {
+                        const rankChange = player.rank_change;
+                        return (
+                            <div
+                                key={player.id || player.user_id || player.username}
+                                className={`group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:shadow-lg ${
+                                    player.is_me || player.username === user?.username
+                                        ? "border-primary/50 bg-primary/10 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                                        : ""
+                                }`}
+                            >
+                                <div className="flex items-center gap-6">
+                                    <div className="flex items-center gap-2">
+                                        <div className="font-mono text-muted-foreground w-8 text-center text-lg">
+                                            #{player.rank || index + 4}
+                                        </div>
+                                        {/* 排名變化指示器 */}
+                                        {activeTab === "history" && rankChange !== null && rankChange !== undefined && (
+                                            <div className="flex flex-col items-center">
+                                                {rankChange > 0 ? (
+                                                    <div className="flex items-center text-red-400 text-xs">
+                                                        <ArrowUp className="h-3 w-3" />
+                                                        <span>{rankChange}</span>
+                                                    </div>
+                                                ) : rankChange < 0 ? (
+                                                    <div className="flex items-center text-green-400 text-xs">
+                                                        <ArrowDown className="h-3 w-3" />
+                                                        <span>{Math.abs(rankChange)}</span>
+                                                    </div>
+                                                ) : (
+                                                    <Minus className="h-3 w-3 text-zinc-600" />
+                                                )}
+                                            </div>
                                         )}
                                     </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-muted-foreground font-bold">
+                                            {(player.display_name || player.username).charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className={`font-bold text-lg ${
+                                                player.is_me || player.username === user?.username
+                                                    ? "text-primary"
+                                                    : "text-slate-200"
+                                            }`}>
+                                                {player.display_name || player.username}
+                                            </span>
+                                            {(player.is_me || player.username === user?.username) && (
+                                                <span className="text-[10px] uppercase tracking-widest text-primary font-bold">YOU</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="font-mono text-lg text-slate-300 group-hover:text-white transition-colors">
+                                    {formatMoney(player.net_worth)}
                                 </div>
                             </div>
-                            <div className="font-mono text-lg text-slate-300 group-hover:text-white transition-colors">
-                                {formatMoney(player.net_worth)}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
             </>

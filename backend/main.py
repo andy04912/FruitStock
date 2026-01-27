@@ -14,7 +14,7 @@ import json
 
 from database import create_db_and_tables, engine, get_session
 from api import router
-from models import Stock, EventLog, Prediction, User, Portfolio, Transaction, UserDailySnapshot, SystemConfig
+from models import Stock, EventLog, Prediction, User, Portfolio, Transaction, UserDailySnapshot, SystemConfig, LeaderboardSnapshot
 from race_engine import RaceEngine
 from market import MarketEngine
 from events import EventSystem
@@ -134,7 +134,8 @@ def daily_asset_snapshot():
                 continue
             
             portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
-            stock_value = sum(p.quantity * stock_map.get(p.stock_id, 0) for p in portfolios)
+            # 正確計算股票市值：多頭 + 空頭（用絕對值）
+            stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
             total = user.balance + stock_value
             
             snapshot = UserDailySnapshot(
@@ -147,6 +148,66 @@ def daily_asset_snapshot():
             session.add(snapshot)
         session.commit()
         print(f"[Daily Snapshot] 已記錄 {len(users)} 位用戶的資產快照")
+
+def daily_leaderboard_snapshot():
+    """記錄每日排行榜快照（每天 00:05 執行，在資產快照之後）"""
+    from datetime import datetime
+    with Session(engine) as session:
+        users = session.exec(select(User)).all()
+        stocks = session.exec(select(Stock)).all()
+        stock_map = {s.id: s.price for s in stocks}
+        today = datetime.now().strftime("%Y-%m-%d")
+        yesterday = (datetime.now() - __import__('datetime').timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # 檢查今天是否已有快照
+        existing = session.exec(
+            select(LeaderboardSnapshot).where(LeaderboardSnapshot.date == today)
+        ).first()
+        if existing:
+            print("[Leaderboard Snapshot] 今日已有快照，跳過")
+            return
+
+        # 計算所有用戶的淨值並排名
+        user_net_worths = []
+        for user in users:
+            portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user.id)).all()
+            stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
+            net_worth = user.balance + stock_value
+            user_net_worths.append({
+                "user": user,
+                "net_worth": net_worth
+            })
+
+        # 按淨值排序
+        user_net_worths.sort(key=lambda x: x["net_worth"], reverse=True)
+
+        # 取得昨日排名（用於計算升降）
+        yesterday_ranks = {}
+        yesterday_snapshots = session.exec(
+            select(LeaderboardSnapshot).where(LeaderboardSnapshot.date == yesterday)
+        ).all()
+        for snap in yesterday_snapshots:
+            yesterday_ranks[snap.user_id] = snap.rank
+
+        # 記錄今日排名
+        for rank, item in enumerate(user_net_worths, start=1):
+            user = item["user"]
+            net_worth = item["net_worth"]
+            previous_rank = yesterday_ranks.get(user.id)
+
+            snapshot = LeaderboardSnapshot(
+                user_id=user.id,
+                username=user.username,
+                nickname=user.nickname,
+                date=today,
+                rank=rank,
+                net_worth=round(net_worth, 2),
+                previous_rank=previous_rank
+            )
+            session.add(snapshot)
+
+        session.commit()
+        print(f"[Leaderboard Snapshot] 已記錄 {len(user_net_worths)} 位用戶的排名快照")
 
 def migrate_nicknames():
     """遷移：為現有用戶設置預設暱稱（username）"""
@@ -304,6 +365,9 @@ async def lifespan(app: FastAPI):
 
     # 每日 00:01 收取做空利息
     scheduler.add_job(market_engine.charge_short_interest, 'cron', hour=0, minute=1)
+
+    # 每日 00:05 記錄排行榜快照（在資產快照之後）
+    scheduler.add_job(daily_leaderboard_snapshot, 'cron', hour=0, minute=5)
 
     scheduler.start()
 

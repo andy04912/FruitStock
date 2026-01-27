@@ -206,6 +206,18 @@ class UserDailySnapshot(SQLModel, table=True):
     stock_value: float  # 股票市值
     created_at: datetime = Field(default_factory=datetime.now)
 
+class LeaderboardSnapshot(SQLModel, table=True):
+    """每日排行榜快照，用於歷史排名和名人堂"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    username: str  # 冗餘儲存，避免用戶刪除後查不到
+    nickname: Optional[str] = Field(default=None)  # 暱稱快照
+    date: str = Field(index=True)  # YYYY-MM-DD
+    rank: int  # 當日排名
+    net_worth: float  # 當日淨值
+    previous_rank: Optional[int] = Field(default=None)  # 前一日排名（用於計算升降）
+    created_at: datetime = Field(default_factory=datetime.now)
+
 class SystemConfig(SQLModel, table=True):
     """系統配置，可動態調整的參數"""
     id: Optional[int] = Field(default=None, primary_key=True)

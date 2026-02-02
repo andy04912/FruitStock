@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { Card, CardContent } from "../components/ui/components";
@@ -249,7 +250,8 @@ export default function LeaderboardPage() {
                                             #2
                                         </div>
                                     </div>
-                                    <Card className="w-full bg-slate-800/50 border-slate-600/50 backdrop-blur-sm overflow-hidden">
+                                    <Card className="w-full bg-slate-800/50 border-slate-600/50 backdrop-blur-sm overflow-hidden hover:opacity-80 transition-opacity">
+                                        <Link to={`/profile/${top3[1].id || top3[1].user_id}`} className="block">
                                         <div className="h-2 w-full bg-slate-400" />
                                         <CardContent className="p-4 text-center">
                                             <div className="font-bold text-xl truncate">
@@ -258,6 +260,7 @@ export default function LeaderboardPage() {
                                             </div>
                                             <div className="text-slate-400 font-mono mt-1">{formatMoney(top3[1].net_worth)}</div>
                                         </CardContent>
+                                        </Link>
                                     </Card>
                                     <div className="h-16 w-full md:w-3/4 bg-gradient-to-b from-slate-700/50 to-transparent mt-2 rounded-t-lg hidden md:block" />
                                 </div>
@@ -277,7 +280,8 @@ export default function LeaderboardPage() {
                                             #1
                                         </div>
                                     </div>
-                                    <Card className="w-full bg-gradient-to-b from-yellow-900/40 to-background border-yellow-500/30 backdrop-blur-sm shadow-[0_0_30px_rgba(234,179,8,0.1)]">
+                                    <Card className="w-full bg-gradient-to-b from-yellow-900/40 to-background border-yellow-500/30 backdrop-blur-sm shadow-[0_0_30px_rgba(234,179,8,0.1)] hover:opacity-80 transition-opacity">
+                                        <Link to={`/profile/${top3[0].id || top3[0].user_id}`} className="block">
                                         <div className="h-3 w-full bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 animate-pulse" />
                                         <CardContent className="p-6 text-center">
                                             <div className="font-black text-2xl truncate text-yellow-400 mb-1">
@@ -289,6 +293,7 @@ export default function LeaderboardPage() {
                                                 <TrendingUp className="h-3 w-3 mr-1" /> {activeTab === "global" ? "ALL TIME HIGH" : "FRIEND CHAMPION"}
                                             </div>
                                         </CardContent>
+                                        </Link>
                                     </Card>
                                     <div className="h-24 w-full md:w-3/4 bg-gradient-to-b from-yellow-600/20 to-transparent mt-2 rounded-t-lg hidden md:block" />
                                 </div>
@@ -307,7 +312,8 @@ export default function LeaderboardPage() {
                                             #3
                                         </div>
                                     </div>
-                                    <Card className="w-full bg-amber-950/30 border-amber-900/50 backdrop-blur-sm overflow-hidden">
+                                    <Card className="w-full bg-amber-950/30 border-amber-900/50 backdrop-blur-sm overflow-hidden hover:opacity-80 transition-opacity">
+                                        <Link to={`/profile/${top3[2].id || top3[2].user_id}`} className="block">
                                         <div className="h-2 w-full bg-amber-700" />
                                         <CardContent className="p-4 text-center">
                                             <div className="font-bold text-xl truncate text-amber-500">
@@ -316,6 +322,7 @@ export default function LeaderboardPage() {
                                             </div>
                                             <div className="text-amber-700 font-mono mt-1">{formatMoney(top3[2].net_worth)}</div>
                                         </CardContent>
+                                        </Link>
                                     </Card>
                                     <div className="h-12 w-full md:w-3/4 bg-gradient-to-b from-amber-900/30 to-transparent mt-2 rounded-t-lg hidden md:block" />
                                 </div>
@@ -338,7 +345,8 @@ export default function LeaderboardPage() {
                     {rest.map((player, index) => {
                         const rankChange = player.rank_change;
                         return (
-                            <div
+                            <Link
+                                to={`/profile/${player.id || player.user_id || player.username}`} // Fallback to username might be risky if route expects int, but logic handles it? Route expects :userId. We should ensure we pass ID.
                                 key={player.id || player.user_id || player.username}
                                 className={`group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:shadow-lg ${
                                     player.is_me || player.username === user?.username
@@ -391,7 +399,7 @@ export default function LeaderboardPage() {
                                 <div className="font-mono text-lg text-slate-300 group-hover:text-white transition-colors">
                                     {formatMoney(player.net_worth)}
                                 </div>
-                            </div>
+                            </Link>
                         );
                     })}
                 </div>

@@ -65,6 +65,10 @@ function AppContent() {
                             path="/profile" 
                             element={<PrivateRoute><ProfilePage /></PrivateRoute>} 
                         />
+                        <Route 
+                            path="/profile/:userId" 
+                            element={<PrivateRoute><ProfilePage /></PrivateRoute>} 
+                        />
                         {/* 兼容舊路由 */}
                         <Route 
                             path="/portfolio" 

@@ -76,10 +76,11 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  const register = async (username, password) => {
+  const register = async (username, password, nickname) => {
     const res = await axios.post(`${API_URL}/register`, {
       username,
-      hashed_password: password, // Backend expects 'hashed_password' but will hash it. 
+      hashed_password: password, // Backend expects 'hashed_password' but will hash it.
+      nickname: nickname || undefined 
     });
     return res.data;
   };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
@@ -9,11 +9,16 @@ import {
     History, Gift, Users, Gamepad2, Edit2, Check, X,
     ChevronDown, ChevronUp, DollarSign
 } from "lucide-react";
-import { formatMoney, formatNumber, formatPrice, formatPercent } from "../utils/format";
+import { formatMoney, formatNumber, formatPrice, formatPercent, formatCompactNumber, formatSmartMoney } from "../utils/format";
 import { LineChart } from "../components/charts/LineChart";
 
 export default function ProfilePage() {
     const { API_URL, token, user } = useAuth();
+    const { userId } = useParams(); // Get user ID from URL
+    const isReadOnly = !!userId && parseInt(userId) !== user?.id; // Check if determining other user
+    
+
+    
     const [profile, setProfile] = useState(null);
     const [assetHistory, setAssetHistory] = useState([]);
     const [transactions, setTransactions] = useState([]);
@@ -23,6 +28,12 @@ export default function ProfilePage() {
     const [pendingRequests, setPendingRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState("overview");
+
+    // Reset tab when userId changes
+    useEffect(() => {
+        setActiveTab("overview");
+    }, [userId]);
+
     
     // 暱稱編輯
     const [isEditingNickname, setIsEditingNickname] = useState(false);
@@ -35,25 +46,42 @@ export default function ProfilePage() {
     const headers = { Authorization: `Bearer ${token}` };
 
     const fetchProfile = async () => {
+        setLoading(true);
         try {
-            const [profileRes, historyRes, txRes, portfolioRes, stocksRes, friendsRes, pendingRes] = await Promise.all([
-                axios.get(`${API_URL}/profile`, { headers }),
-                axios.get(`${API_URL}/profile/asset-history`, { headers }),
-                axios.get(`${API_URL}/transactions`, { headers }),
-                axios.get(`${API_URL}/portfolio`, { headers }),
-                axios.get(`${API_URL}/stocks`),
-                axios.get(`${API_URL}/friends`, { headers }),
-                axios.get(`${API_URL}/friends/pending`, { headers })
-            ]);
-            
-            setProfile(profileRes.data);
-            setAssetHistory(historyRes.data);
-            setTransactions(txRes.data);
-            setHoldings(portfolioRes.data);
-            setStocks(stocksRes.data);
-            setFriends(friendsRes.data);
-            setPendingRequests(pendingRes.data);
-            setNewNickname(profileRes.data.nickname);
+            if (isReadOnly) {
+                // Fetch Friend's Profile
+                const res = await axios.get(`${API_URL}/users/${userId}/full_profile`, { headers });
+                const data = res.data;
+                
+                setProfile(data.profile);
+                setAssetHistory(data.asset_history);
+                setTransactions(data.transactions);
+                setHoldings(data.holdings);
+                setStocks(data.stocks); // Should return basic stock list
+                setFriends([]); // Hide friends list for now or fetch if API supports
+                setPendingRequests([]);
+                setNewNickname(data.profile.nickname);
+            } else {
+                // Fetch Own Profile
+                const [profileRes, historyRes, txRes, portfolioRes, stocksRes, friendsRes, pendingRes] = await Promise.all([
+                    axios.get(`${API_URL}/profile`, { headers }),
+                    axios.get(`${API_URL}/profile/asset-history`, { headers }),
+                    axios.get(`${API_URL}/transactions`, { headers }),
+                    axios.get(`${API_URL}/portfolio`, { headers }),
+                    axios.get(`${API_URL}/stocks`),
+                    axios.get(`${API_URL}/friends`, { headers }),
+                    axios.get(`${API_URL}/friends/pending`, { headers })
+                ]);
+                
+                setProfile(profileRes.data);
+                setAssetHistory(historyRes.data);
+                setTransactions(txRes.data);
+                setHoldings(portfolioRes.data);
+                setStocks(stocksRes.data);
+                setFriends(friendsRes.data);
+                setPendingRequests(pendingRes.data);
+                setNewNickname(profileRes.data.nickname);
+            }
         } catch (e) {
             console.error(e);
             toast.error("載入個人資料失敗");
@@ -66,7 +94,7 @@ export default function ProfilePage() {
         fetchProfile();
         const interval = setInterval(fetchProfile, 30000);
         return () => clearInterval(interval);
-    }, [API_URL, token]);
+    }, [API_URL, token, userId]); // Add userId dependency
 
     const updateNickname = async () => {
         if (newNickname.length < 2 || newNickname.length > 16) {
@@ -219,8 +247,9 @@ export default function ProfilePage() {
     const tabs = [
         { id: "overview", label: "總覽", icon: Wallet },
         { id: "holdings", label: "持倉/交易", icon: TrendingUp },
-        { id: "casino", label: "賽馬/老虎機", icon: Gamepad2 },
-        { id: "friends", label: "好友", icon: Users },
+        // Only show Friends tab if NOT read-only
+        ...(!isReadOnly ? [{ id: "friends", label: "好友", icon: Users }] : []),
+        { id: "stats", label: "戰績", icon: Gamepad2 },
     ];
 
     return (
@@ -259,17 +288,33 @@ export default function ProfilePage() {
                                 </div>
                             ) : (
                                 <>
-                                    <h1 className="text-2xl font-black text-white">{profile?.nickname}</h1>
-                                    <button 
+                                    <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
+                                {profile.nickname || profile.username}
+                            </h2>
+                            
+                            
+                            {!isReadOnly && profile.username !== (profile.nickname || profile.username) && (
+                                <div className="mt-1 flex items-center gap-2">
+                                     <button 
                                         onClick={() => setIsEditingNickname(true)}
-                                        className="p-1 text-zinc-400 hover:text-white transition-colors"
-                                    >
-                                        <Edit2 className="h-4 w-4" />
-                                    </button>
-                                </>
+                                        className="text-xs text-primary hover:text-primary/80 transition-colors"
+                                     >
+                                        <Edit2 className="h-3 w-3" />
+                                     </button>
+                                </div>
+                            )}
+                            {!isReadOnly && profile.username === (profile.nickname || profile.username) && (
+                                <button 
+                                    onClick={() => setIsEditingNickname(true)}
+                                    className="mt-1 text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                                >
+                                    <Edit2 className="h-3 w-3" /> 設定暱稱
+                                </button>
+                            )}    </>
                             )}
                         </div>
-                        <p className="text-zinc-400 text-sm">@{user?.username}</p>
+                        <p className="text-zinc-400 text-sm">@{profile.username}</p>
+                        <p className="text-muted-foreground">{isReadOnly ? `${profile.nickname || profile.username} 的個人檔案` : '我的投資組合'}</p>
                         {profile?.nickname_updated_at && (
                             <p className="text-zinc-500 text-xs mt-1">
                                 暱稱更新於：{new Date(profile.nickname_updated_at).toLocaleDateString()}（7天內不可再更改）
@@ -316,7 +361,7 @@ export default function ProfilePage() {
                                     <DollarSign className="h-4 w-4" />
                                     現金餘額
                                 </div>
-                                <div className="text-xl font-bold text-emerald-400">{formatMoney(profile?.balance)}</div>
+                                <div className="text-2xl font-bold text-emerald-400">{formatSmartMoney(profile?.balance)}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-zinc-900/50 border-zinc-800">
@@ -325,7 +370,7 @@ export default function ProfilePage() {
                                     <PiggyBank className="h-4 w-4" />
                                     持倉市值
                                 </div>
-                                <div className="text-xl font-bold text-blue-400">{formatMoney(profile?.stock_value)}</div>
+                                <div className="text-2xl font-bold text-blue-400">{formatSmartMoney(profile?.stock_value)}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-zinc-900/50 border-zinc-800">
@@ -334,9 +379,9 @@ export default function ProfilePage() {
                                     <TrendingUp className="h-4 w-4" />
                                     未實現損益
                                 </div>
-                                <div className={`text-xl font-bold ${profile?.unrealized_pnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                    {formatMoney(profile?.unrealized_pnl)}
-                                </div>
+                                    <div className={`text-2xl font-bold ${profile.unrealized_pnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                        {profile.unrealized_pnl >= 0 ? "+" : ""}{formatSmartMoney(profile.unrealized_pnl)}
+                                    </div>
                             </CardContent>
                         </Card>
                         <Card className="bg-zinc-900/50 border-zinc-800">
@@ -345,8 +390,8 @@ export default function ProfilePage() {
                                     <History className="h-4 w-4" />
                                     已實現損益
                                 </div>
-                                <div className={`text-xl font-bold ${profile?.realized_pnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                    {formatMoney(profile?.realized_pnl)}
+                                <div className={`text-2xl font-bold ${profile?.realized_pnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                    {formatSmartMoney(profile?.realized_pnl)}
                                 </div>
                             </CardContent>
                         </Card>
@@ -442,25 +487,25 @@ export default function ProfilePage() {
                                     <div className="grid grid-cols-3 gap-3 mb-4">
                                         <div className="bg-zinc-800/50 rounded-lg p-3">
                                             <div className="text-xs text-zinc-500 mb-1">起始資產</div>
-                                            <div className="text-sm font-bold text-zinc-300">
-                                                {formatMoney(assetHistory[0]?.total_assets)}
+                                            <div className="text-lg font-bold text-zinc-300">
+                                                {formatSmartMoney(assetHistory[0]?.total_assets)}
                                             </div>
                                         </div>
                                         <div className="bg-zinc-800/50 rounded-lg p-3">
                                             <div className="text-xs text-zinc-500 mb-1">目前資產</div>
-                                            <div className="text-sm font-bold text-cyan-400">
-                                                {formatMoney(profile?.total_assets)}
+                                            <div className="text-lg font-bold text-white">
+                                                {formatSmartMoney(profile.total_assets)}
                                             </div>
                                         </div>
                                         <div className="bg-zinc-800/50 rounded-lg p-3">
                                             <div className="text-xs text-zinc-500 mb-1">總變化</div>
-                                            <div className={`text-sm font-bold ${
+                                            <div className={`text-lg font-bold ${
                                                 (profile?.total_assets - assetHistory[0]?.total_assets) >= 0
                                                     ? 'text-red-400'
                                                     : 'text-green-400'
                                             }`}>
                                                 {(profile?.total_assets - assetHistory[0]?.total_assets) >= 0 ? '+' : ''}
-                                                {formatMoney(profile?.total_assets - assetHistory[0]?.total_assets)}
+                                                {formatSmartMoney(profile?.total_assets - assetHistory[0]?.total_assets)}
                                                 {assetHistory[0]?.total_assets > 0 && (
                                                     <span className="text-xs ml-1">
                                                         ({formatPercent((profile?.total_assets - assetHistory[0]?.total_assets) / assetHistory[0]?.total_assets)})
@@ -664,11 +709,11 @@ export default function ProfilePage() {
                                 </div>
                             )}
                         </CardContent>
-                    </Card>
-                </div>
+                        </Card>
+                    </div>
             )}
 
-            {activeTab === "casino" && (
+            {activeTab === "stats" && (
                 <div className="space-y-6">
                     {/* Race Stats */}
                     <Card className="bg-zinc-900/50 border-zinc-800">
@@ -684,7 +729,7 @@ export default function ProfilePage() {
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
                                     <div className="text-zinc-400 text-sm">總下注金額</div>
                                     <div className="text-2xl font-bold text-yellow-400">
-                                        {formatMoney(profile?.race_stats?.total_wagered)}
+                                        {formatSmartMoney(profile?.race_stats?.total_wagered || 0)}
                                     </div>
                                 </div>
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
@@ -700,7 +745,7 @@ export default function ProfilePage() {
                                     <div className={`text-2xl font-bold ${
                                         (profile?.race_stats?.net_profit || 0) >= 0 ? 'text-red-400' : 'text-green-400'
                                     }`}>
-                                        {formatMoney(profile?.race_stats?.net_profit)}
+                                        {formatSmartMoney(profile?.race_stats?.net_profit || 0)}
                                     </div>
                                 </div>
                             </div>
@@ -721,13 +766,13 @@ export default function ProfilePage() {
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
                                     <div className="text-zinc-400 text-sm">總下注金額</div>
                                     <div className="text-2xl font-bold text-pink-400">
-                                        {formatMoney(profile?.slots_stats?.total_wagered)}
+                                        {formatSmartMoney(profile?.slots_stats?.total_wagered || 0)}
                                     </div>
                                 </div>
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
                                     <div className="text-zinc-400 text-sm">總贏得金額</div>
-                                    <div className="text-2xl font-bold text-yellow-400">
-                                        {formatMoney(profile?.slots_stats?.total_won)}
+                                    <div className="text-2xl font-bold text-white">
+                                        {formatSmartMoney(profile?.slots_stats?.total_won || 0)}
                                     </div>
                                 </div>
                                 <div className="text-center p-3 bg-zinc-800/50 rounded-lg">
@@ -735,7 +780,7 @@ export default function ProfilePage() {
                                     <div className={`text-2xl font-bold ${
                                         (profile?.slots_stats?.net_profit || 0) >= 0 ? 'text-red-400' : 'text-green-400'
                                     }`}>
-                                        {formatMoney(profile?.slots_stats?.net_profit)}
+                                        {formatSmartMoney(profile?.slots_stats?.net_profit || 0)}
                                     </div>
                                 </div>
                             </div>
@@ -750,13 +795,13 @@ export default function ProfilePage() {
                                 <div className="text-center">
                                     <div className="text-zinc-400 text-sm">總投入</div>
                                     <div className="text-xl font-bold">
-                                        {formatMoney((profile?.race_stats?.total_wagered || 0) + (profile?.slots_stats?.total_wagered || 0))}
+                                        {formatSmartMoney((profile?.race_stats?.total_wagered || 0) + (profile?.slots_stats?.total_wagered || 0))}
                                     </div>
                                 </div>
                                 <div className="text-center">
                                     <div className="text-zinc-400 text-sm">總回收</div>
                                     <div className="text-xl font-bold text-yellow-400">
-                                        {formatMoney((profile?.race_stats?.total_won || 0) + (profile?.slots_stats?.total_won || 0))}
+                                        {formatSmartMoney((profile?.race_stats?.total_won || 0) + (profile?.slots_stats?.total_won || 0))}
                                     </div>
                                 </div>
                                 <div className="text-center">
@@ -766,7 +811,7 @@ export default function ProfilePage() {
                                             ? 'text-red-400'
                                             : 'text-green-400'
                                     }`}>
-                                        {formatMoney((profile?.race_stats?.net_profit || 0) + (profile?.slots_stats?.net_profit || 0))}
+                                        {formatSmartMoney((profile?.race_stats?.net_profit || 0) + (profile?.slots_stats?.net_profit || 0))}
                                     </div>
                                 </div>
                             </div>
@@ -783,7 +828,7 @@ export default function ProfilePage() {
                             <h3 className="font-bold text-lg mb-3">搜尋用戶</h3>
                             <input
                                 type="text"
-                                placeholder="輸入用戶名稱..."
+                                placeholder="輸入用戶名或暱稱搜尋（至少 2 個字）"
                                 value={searchQuery}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
@@ -795,7 +840,7 @@ export default function ProfilePage() {
                                 <div className="mt-3 space-y-2">
                                     {searchResults.map(u => (
                                         <div key={u.id} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-                                            <span>{u.username}</span>
+                                            <span>{u.nickname || u.username}</span>
                                             {u.status === "none" && (
                                                 <button
                                                     onClick={() => sendFriendRequest(u.id)}
@@ -857,13 +902,15 @@ export default function ProfilePage() {
                                 <div className="space-y-2">
                                     {friends.map(f => (
                                         <div key={f.id} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-                                            <div className="flex items-center gap-3">
+                                            <Link to={`/profile/${f.id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity flex-1">
                                                 <div className="h-10 w-10 rounded-full bg-emerald-600/20 flex items-center justify-center text-emerald-400 font-bold">
-                                                    {f.username.charAt(0).toUpperCase()}
+                                                    {f.username[0].toUpperCase()}
                                                 </div>
-                                                <span className="font-bold">{f.username}</span>
-                                            </div>
-                                            <div className="text-right">
+                                                <div>
+                                                    <div className="font-bold text-white">{f.nickname}</div>
+                                                    <div className="text-xs text-zinc-500">@{f.username}</div>
+                                                </div>
+                                            </Link>    <div className="text-right">
                                                 <div className="font-mono text-yellow-400">{formatMoney(f.net_worth)}</div>
                                                 <div className="text-xs text-zinc-400">淨值</div>
                                             </div>

@@ -197,12 +197,12 @@ class Trader:
         # 優先使用即時價格，否則用 DB 價格
         price = live_price if live_price and live_price > 0 else stock.price
 
-        # 計算所需保證金（150%）
+        # 計算所需保證金（120% = 100% 賣出所得 + 20% 自有資金）
         short_value = price * quantity
-        required_margin = short_value * 1.5
+        required_margin = short_value * 1.2
         # 扣除賣出收入後，實際需要的淨保證金
-        net_margin_required = required_margin - short_value  # 0.5x
-
+        net_margin_required = required_margin - short_value  # 0.2x
+        
         # 更新持倉（需要先檢查是否有多單）
         portfolio = self.get_portfolio_item(user.id, stock_id)
 

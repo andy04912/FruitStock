@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_
 from datetime import timedelta, datetime
 from typing import List
 import json
@@ -28,10 +28,20 @@ slots_engine = SlotsEngine(lambda: Session(engine))
 @router.post("/register", response_model=dict)
 def register(user: User, session: Session = Depends(get_session)):
     try:
+        # Check Username
         statement = select(User).where(User.username == user.username)
         if session.exec(statement).first():
-            # RETURN 200 OK with status='exists' per user request
             return {"message": "Username already registered", "user_id": -1, "status": "exists"}
+        
+        # Check Nickname (New)
+        if user.nickname:
+            nickname_stmt = select(User).where(User.nickname == user.nickname)
+            if session.exec(nickname_stmt).first():
+                return {"message": "Nickname already taken", "user_id": -1, "status": "nickname_exists"}
+        
+        # Determine nickname (default to username if empty)
+        if not user.nickname:
+             user.nickname = user.username
         
         user.hashed_password = get_password_hash(user.hashed_password)
         session.add(user)
@@ -619,7 +629,7 @@ def search_users(q: str, current_user: User = Depends(get_current_user), session
     # 搜尋用戶名稱（模糊匹配）
     users = session.exec(
         select(User).where(
-            User.username.contains(q),
+            or_(User.username.contains(q), User.nickname.contains(q)),
             User.id != current_user.id
         ).limit(10)
     ).all()
@@ -645,6 +655,7 @@ def search_users(q: str, current_user: User = Depends(get_current_user), session
         results.append({
             "id": user.id,
             "username": user.username,
+            "nickname": user.nickname,
             "status": status
         })
     
@@ -683,7 +694,8 @@ def send_friend_request(user_id: int, current_user: User = Depends(get_current_u
     session.add(friendship)
     session.commit()
     
-    return {"status": "success", "message": f"已發送好友請求給 {target_user.username}"}
+    target_name = target_user.nickname or target_user.username
+    return {"status": "success", "message": f"已發送好友請求給 {target_name}"}
 
 @router.post("/friends/accept/{request_id}")
 def accept_friend_request(request_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -796,6 +808,7 @@ def get_friends_list(current_user: User = Depends(get_current_user), session: Se
         
         results.append({
             "id": friend.id,
+            "nickname": friend.nickname,
             "username": friend.username,
             "balance": round(friend.balance, 2),
             "stock_value": round(stock_value, 2),
@@ -921,6 +934,11 @@ def update_nickname(body: dict, current_user: User = Depends(get_current_user), 
             remaining_days = 7 - time_diff.days
             remaining_hours = (timedelta(days=7) - time_diff).seconds // 3600
             return {"status": "error", "message": f"還需等待 {remaining_days} 天 {remaining_hours} 小時才能修改暱稱"}
+
+    # 檢查是否與其他使用者重複 (此為新增邏輯)
+    existing_user = session.exec(select(User).where(User.nickname == nickname)).first()
+    if existing_user and existing_user.id != current_user.id:
+        return {"status": "error", "message": "此暱稱已被其他使用者使用"}
     
     # 更新暱稱
     current_user.nickname = nickname
@@ -1238,4 +1256,108 @@ def get_hall_of_fame(session: Session = Depends(get_session)):
 
     return {
         "top_champions": top_champions
+    }
+
+@router.get("/users/{user_id}/full_profile")
+def get_user_full_profile(user_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """取得指定用戶的完整個人檔案（公開資訊）"""
+    target_user = session.get(User, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # 1. 計算資產
+    portfolios = session.exec(select(Portfolio).where(Portfolio.user_id == user_id)).all()
+    stocks = session.exec(select(Stock)).all()
+    stock_map = {s.id: s for s in stocks}
+    
+    stock_value = 0
+    holdings_data = []
+    
+    for p in portfolios:
+        stock = stock_map.get(p.stock_id)
+        if stock:
+            # 確保使用絕對值計算市值（空頭也是資產負債的一部份，但在這裡視為曝險價值，或依您的邏輯計算）
+            # 這裡簡化：多頭市值 + 空頭市值（絕對值）
+            s_val = abs(p.quantity) * stock.price
+            stock_value += s_val
+            
+            holdings_data.append({
+                "stock_id": p.stock_id,
+                "quantity": p.quantity,
+                "average_cost": p.average_cost,
+                "stock": {
+                    "id": stock.id,
+                    "symbol": stock.symbol,
+                    "name": stock.name,
+                    "price": stock.price
+                }
+            })
+            
+    total_assets = target_user.balance + stock_value
+    unrealized_pnl = 0 
+    # 簡單計算未實現損益 (Frontend calculate accurately usually, but we can provide base)
+    for p in portfolios:
+        stock = stock_map.get(p.stock_id)
+        if stock and p.quantity != 0:
+            if p.quantity > 0:
+                unrealized_pnl += (stock.price - p.average_cost) * p.quantity
+            else:
+                unrealized_pnl += (p.average_cost - stock.price) * abs(p.quantity)
+
+    # 2. Race Stats
+    race_bets = session.exec(select(Bet).where(Bet.user_id == user_id)).all()
+    race_stats = {
+        "total_bets": len(race_bets),
+        "total_wagered": sum(b.amount for b in race_bets),
+        "wins": len([b for b in race_bets if b.result == "WON"]),
+        "total_won": sum(b.payout for b in race_bets if b.result == "WON"),
+    }
+    race_stats["net_profit"] = race_stats["total_won"] - race_stats["total_wagered"]
+
+    # 3. Slots Stats
+    slot_spins = session.exec(select(SlotSpin).where(SlotSpin.user_id == user_id)).all()
+    slots_stats = {
+        "total_spins": len(slot_spins),
+        "total_wagered": sum(s.bet_amount for s in slot_spins),
+        "total_won": sum(s.payout for s in slot_spins)
+    }
+    slots_stats["net_profit"] = slots_stats["total_won"] - slots_stats["total_wagered"]
+
+    # 4. Asset History (Limit to last 30 days)
+    history = session.exec(
+        select(UserDailySnapshot)
+        .where(UserDailySnapshot.user_id == user_id)
+        .order_by(UserDailySnapshot.date.asc())
+        .limit(30)
+    ).all()
+    
+    # 5. Recent Transactions (Limit 10)
+    transactions = session.exec(
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .order_by(Transaction.timestamp.desc())
+        .limit(10)
+    ).all()
+    
+    # Construct Profile Object matching frontend expectations
+    profile_data = {
+        "id": target_user.id,
+        "username": target_user.username,
+        "nickname": target_user.nickname,
+        "balance": target_user.balance,
+        "stock_value": stock_value,
+        "total_assets": total_assets,
+        "unrealized_pnl": unrealized_pnl,
+        "realized_pnl": 0, # Difficult to calc on fly without field, leave 0 or implement later
+        "nickname_updated_at": target_user.nickname_updated_at,
+        "race_stats": race_stats,
+        "slots_stats": slots_stats
+    }
+
+    return {
+        "profile": profile_data,
+        "asset_history": history,
+        "holdings": portfolios, # Frontend expects raw portfolio list for parsing
+        "transactions": transactions,
+        "stocks": [s for s in stocks] # Return basic stock list for mapping
     }

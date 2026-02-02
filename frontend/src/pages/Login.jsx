@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [nickname, setNickname] = useState(""); // Add nickname state
   const [isRegister, setIsRegister] = useState(false);
   const { login, register } = useAuth();
   const navigate = useNavigate();
@@ -16,10 +17,12 @@ export default function Login() {
     e.preventDefault();
     try {
         if (isRegister) {
-            const res = await register(username, password);
+            const res = await register(username, password, nickname); // Pass nickname
             if (res && res.status === 'exists') {
                 toast.warning("此帳號已存在，請直接登入！");
                 setIsRegister(false);
+            } else if (res && res.status === 'nickname_exists') {
+                toast.warning("此暱稱已被使用，請更換一個！");
             } else {
                 toast.success("註冊成功，請登入！");
                 setIsRegister(false);
@@ -62,6 +65,15 @@ export default function Login() {
                 required
               />
             </div>
+            {isRegister && (
+                <div className="space-y-2">
+                  <Input 
+                    placeholder="暱稱 (選填，之後可修改)" 
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                  />
+                </div>
+            )}
             <div className="space-y-2">
               <Input 
                 type="password" 

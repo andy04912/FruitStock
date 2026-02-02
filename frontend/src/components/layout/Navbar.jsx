@@ -112,7 +112,7 @@ export default function Navbar() {
                             onClick={() => setShowDetail(!showDetail)}
                         >
                             <span className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-wider font-bold group-hover:text-primary transition-colors flex items-center gap-1">
-                                <span className="hidden md:inline">Net Worth</span> <span className="md:hidden">財富</span> <span className="text-[10px]">▼</span>
+                                <span className="hidden md:inline">身價</span> <span className="md:hidden">財富</span> <span className="text-[10px]">▼</span>
                             </span>
                             <span className={`font-mono font-bold text-sm md:text-lg ${netWorth > 10000 ? "text-emerald-400 shadow-emerald-400/20" : "text-white"}`}>
                                 ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -121,7 +121,7 @@ export default function Navbar() {
 
                         {/* Dropdown Content */}
                         {showDetail && (
-                            <div className="absolute top-full right-0 mt-3 w-56 bg-slate-900/95 border border-slate-700/50 rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-xl p-4 z-50 animate-in fade-in zoom-in-95 duration-200">
+                            <div className="absolute top-full right-0 mt-3 w-64 bg-slate-900/95 border border-slate-700/50 rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-xl p-4 z-50 animate-in fade-in zoom-in-95 duration-200">
                                  <div className="space-y-3">
                                     <div className="flex justify-between items-center text-sm">
                                         <div className="flex items-center gap-2 text-slate-400">

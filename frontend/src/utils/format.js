@@ -81,3 +81,27 @@ export const formatCompactNumber = (value) => {
     }
     return formatNumber(value, 2);
 };
+
+/**
+ * 智能金額格式化（根據數字大小自動選擇格式）
+ * @param {number} value - 金額
+ * @param {number} threshold - 使用簡化格式的門檻，預設 1000000（百萬）
+ * @returns {string} - 格式化後的金額
+ * 
+ * 當絕對值 >= threshold 時使用 K/M/B 格式
+ * 當絕對值 < threshold 時使用完整金額格式
+ */
+export const formatSmartMoney = (value, threshold = 1000000) => {
+    if (value === null || value === undefined || isNaN(value)) {
+        return '$0.00';
+    }
+    
+    const absValue = Math.abs(value);
+    
+    if (absValue >= threshold) {
+        const sign = value < 0 ? '-' : '';
+        return `${sign}$${formatCompactNumber(absValue)}`;
+    }
+    
+    return formatMoney(value);
+};

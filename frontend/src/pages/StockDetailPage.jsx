@@ -166,13 +166,45 @@ const TradePanel = ({ stock, user, API_URL, onTrade, holdingQuantity, holdingAvg
                             )}
                         </div>
                     </div>
-                    <Input
-                        type="number"
-                        min="1"
-                        value={quantity}
-                        className="border border-blue-500/30 px-2 text-sm"
-                        onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-                    />
+                    <div className="flex gap-2">
+                        <Input
+                            type="number"
+                            min="1"
+                            value={quantity}
+                            className="border border-blue-500/30 px-2 text-sm flex-1"
+                            onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
+                        />
+                        {/* 快速比例按鈕 */}
+                        <div className="flex gap-1">
+                            {[25, 50, 75].map((percent) => (
+                                <Button
+                                    key={percent}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9 px-2 text-xs border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 transition-colors"
+                                    onClick={() => {
+                                        if (isShortPosition) {
+                                            // 空頭倉位：按比例回補
+                                            const qty = Math.floor(absHolding * (percent / 100));
+                                            setQuantity(qty > 0 ? qty : 1);
+                                        } else if (holdingQuantity > 0) {
+                                            // 多頭倉位：按比例賣出
+                                            const qty = Math.floor(holdingQuantity * (percent / 100));
+                                            setQuantity(qty > 0 ? qty : 1);
+                                        } else {
+                                            // 無倉位：按比例買入（預留 2% 緩衝）
+                                            const maxBuy = Math.floor((user.balance * 0.98) / stock.price);
+                                            const qty = Math.floor(maxBuy * (percent / 100));
+                                            setQuantity(qty > 0 ? qty : 1);
+                                        }
+                                    }}
+                                    title={`快速填入 ${percent}% 數量`}
+                                >
+                                    {percent}%
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
 
                 

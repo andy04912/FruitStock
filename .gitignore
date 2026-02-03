@@ -43,3 +43,7 @@ backend/database.db
 backend/venv/
 frontend/dist/
 brain/
+
+# AI/Agent configs
+.agent/
+.claude/

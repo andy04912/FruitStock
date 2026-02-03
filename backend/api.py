@@ -868,9 +868,13 @@ def get_profile(current_user: User = Depends(get_current_user), session: Session
     # 正確計算市值：多頭 + 空頭（用絕對值）
     stock_value = sum(abs(p.quantity) * stock_map.get(p.stock_id, 0) for p in portfolios)
 
-    # 計算已實現損益
+    # 計算已實現損益（總計和今日）
     transactions = session.exec(select(Transaction).where(Transaction.user_id == current_user.id)).all()
     realized_pnl = sum(t.profit or 0 for t in transactions)
+    
+    # 計算今日已實現損益（從今天 UTC 零點開始，因為交易記錄使用 UTC 時間）
+    today_start_utc = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_realized_pnl = sum(t.profit or 0 for t in transactions if t.timestamp >= today_start_utc)
 
     # 計算未實現損益（包含多頭和空頭）
     unrealized_pnl = 0
@@ -913,6 +917,7 @@ def get_profile(current_user: User = Depends(get_current_user), session: Session
         "total_assets": round(current_user.balance + stock_value, 2),
         "unrealized_pnl": round(unrealized_pnl, 2),
         "realized_pnl": round(realized_pnl, 2),
+        "today_realized_pnl": round(today_realized_pnl, 2),
         "created_at": current_user.created_at,
         "race_stats": race_stats,
         "slots_stats": slots_stats
@@ -1331,13 +1336,32 @@ def get_user_full_profile(user_id: int, current_user: User = Depends(get_current
         .limit(30)
     ).all()
     
-    # 5. Recent Transactions (Limit 10)
-    transactions = session.exec(
-        select(Transaction)
-        .where(Transaction.user_id == user_id)
+    # 5. Recent Transactions (Limit 30) - JOIN with Stock for symbol/name
+    tx_results = session.exec(
+        select(Transaction, Stock)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.stock_id == Stock.id
+        )
         .order_by(Transaction.timestamp.desc())
-        .limit(10)
+        .limit(30)
     ).all()
+    
+    # 格式化交易紀錄（與 /transactions 端點格式一致）
+    transactions = []
+    for txn, stock in tx_results:
+        transactions.append({
+            "id": txn.id,
+            "stock_id": stock.id,
+            "symbol": stock.symbol,
+            "name": stock.name,
+            "type": txn.type,
+            "price": txn.price,
+            "quantity": txn.quantity,
+            "profit": txn.profit,
+            "timestamp": txn.timestamp,
+            "total": txn.profit if txn.type == "dividend" else txn.price * txn.quantity
+        })
     
     # Construct Profile Object matching frontend expectations
     profile_data = {

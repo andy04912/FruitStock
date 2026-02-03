@@ -388,10 +388,10 @@ export default function ProfilePage() {
                             <CardContent className="p-4">
                                 <div className="flex items-center gap-2 text-zinc-400 text-sm mb-1">
                                     <History className="h-4 w-4" />
-                                    已實現損益
+                                    今日已實現損益
                                 </div>
-                                <div className={`text-2xl font-bold ${profile?.realized_pnl >= 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                    {formatSmartMoney(profile?.realized_pnl)}
+                                <div className={`text-2xl font-bold ${(profile?.today_realized_pnl || 0) >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                    {(profile?.today_realized_pnl || 0) >= 0 ? '+' : ''}{formatSmartMoney(profile?.today_realized_pnl || 0)}
                                 </div>
                             </CardContent>
                         </Card>
@@ -484,13 +484,7 @@ export default function ProfilePage() {
                             {assetHistory.length > 0 ? (
                                 <>
                                     {/* 資產摘要 */}
-                                    <div className="grid grid-cols-3 gap-3 mb-4">
-                                        <div className="bg-zinc-800/50 rounded-lg p-3">
-                                            <div className="text-xs text-zinc-500 mb-1">起始資產</div>
-                                            <div className="text-lg font-bold text-zinc-300">
-                                                {formatSmartMoney(assetHistory[0]?.total_assets)}
-                                            </div>
-                                        </div>
+                                    <div className="grid grid-cols-2 gap-3 mb-4">
                                         <div className="bg-zinc-800/50 rounded-lg p-3">
                                             <div className="text-xs text-zinc-500 mb-1">目前資產</div>
                                             <div className="text-lg font-bold text-white">
@@ -498,20 +492,23 @@ export default function ProfilePage() {
                                             </div>
                                         </div>
                                         <div className="bg-zinc-800/50 rounded-lg p-3">
-                                            <div className="text-xs text-zinc-500 mb-1">總變化</div>
-                                            <div className={`text-lg font-bold ${
-                                                (profile?.total_assets - assetHistory[0]?.total_assets) >= 0
-                                                    ? 'text-red-400'
-                                                    : 'text-green-400'
-                                            }`}>
-                                                {(profile?.total_assets - assetHistory[0]?.total_assets) >= 0 ? '+' : ''}
-                                                {formatSmartMoney(profile?.total_assets - assetHistory[0]?.total_assets)}
-                                                {assetHistory[0]?.total_assets > 0 && (
-                                                    <span className="text-xs ml-1">
-                                                        ({formatPercent((profile?.total_assets - assetHistory[0]?.total_assets) / assetHistory[0]?.total_assets)})
-                                                    </span>
-                                                )}
-                                            </div>
+                                            <div className="text-xs text-zinc-500 mb-1">今日變化</div>
+                                            {(() => {
+                                                // 取得昨日資產（歷史記錄的最後一筆）
+                                                const yesterdayAssets = assetHistory.length > 0 ? assetHistory[assetHistory.length - 1]?.total_assets : profile.total_assets;
+                                                const todayChange = profile.total_assets - yesterdayAssets;
+                                                return (
+                                                    <div className={`text-lg font-bold ${todayChange >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                                        {todayChange >= 0 ? '+' : ''}
+                                                        {formatSmartMoney(todayChange)}
+                                                        {yesterdayAssets > 0 && (
+                                                            <span className="text-xs ml-1">
+                                                                ({formatPercent(todayChange / yesterdayAssets)})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 

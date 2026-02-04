@@ -46,4 +46,7 @@ brain/
 
 # AI/Agent configs
 .agent/
+.agents/
 .claude/
+.codex/
+.opencode/

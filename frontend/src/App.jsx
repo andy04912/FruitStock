@@ -15,6 +15,7 @@ import SlotMachine from "./pages/SlotMachine";
 import BlackjackPage from "./pages/BlackjackPage";
 import AdminPage from "./pages/AdminPage";
 import ProfilePage from "./pages/ProfilePage";
+import CardStorePage from "./pages/CardStorePage";
 
 import NewsTicker from "./components/common/NewsTicker";
 
@@ -69,10 +70,13 @@ function AppContent() {
                             path="/profile/:userId" 
                             element={<PrivateRoute><ProfilePage /></PrivateRoute>} 
                         />
-                        {/* 兼容舊路由 */}
                         <Route 
                             path="/portfolio" 
                             element={<Navigate to="/profile" replace />} 
+                        />
+                        <Route 
+                            path="/cardstore" 
+                            element={<PrivateRoute><CardStorePage /></PrivateRoute>} 
                         />
                     </Routes>
                 </div>

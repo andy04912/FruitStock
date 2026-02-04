@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,13 +17,11 @@ import {
   ArrowLeft,
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  Activity,
-  BarChart3,
 } from 'lucide-react-native';
 import { useSocket, Stock } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { Card, CardContent, Button, Badge } from '../../components/ui';
+import { CandlestickChart } from '../../components/charts';
 import { COLORS } from '../../utils/constants';
 import {
   formatMoney,
@@ -32,6 +30,15 @@ import {
   formatNumber,
 } from '../../utils/format';
 import { sounds } from '../../utils/sound';
+
+// Interface for candle data from API
+interface CandleData {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
 
 // Time interval options
 const INTERVALS = [
@@ -60,11 +67,13 @@ export default function StockDetailScreen() {
   const [stock, setStock] = useState<Stock | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [shortPosition, setShortPosition] = useState<Position | null>(null);
-  const [interval, setInterval] = useState('1m');
+  const [selectedInterval, setSelectedInterval] = useState('1m');
   const [tradeType, setTradeType] = useState<TradeType>('buy');
   const [quantity, setQuantity] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
+  const [candleData, setCandleData] = useState<CandleData[]>([]);
+  const [chartLoading, setChartLoading] = useState(true);
 
   // Find stock from market data
   useEffect(() => {
@@ -99,6 +108,85 @@ export default function StockDetailScreen() {
   useEffect(() => {
     fetchPosition();
   }, [fetchPosition]);
+
+  // Fetch candle data
+  const fetchCandleData = useCallback(async () => {
+    setChartLoading(true);
+    try {
+      const res = await axios.get(
+        `${API_URL}/stocks/${id}/history?interval=${selectedInterval}&limit=60`
+      );
+      const history = res.data || [];
+
+      // Transform API data to chart format
+      const candles: CandleData[] = history.map((item: any) => ({
+        timestamp: new Date(item.timestamp).getTime(),
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+      }));
+
+      setCandleData(candles);
+    } catch (e) {
+      console.error('Failed to fetch candle data:', e);
+      // Generate mock data if API fails
+      if (stock) {
+        const mockCandles = generateMockCandles(stock.price, 60);
+        setCandleData(mockCandles);
+      }
+    } finally {
+      setChartLoading(false);
+    }
+  }, [API_URL, id, selectedInterval, stock]);
+
+  // Generate mock candle data for testing/fallback
+  const generateMockCandles = (currentPrice: number, count: number): CandleData[] => {
+    const candles: CandleData[] = [];
+    let price = currentPrice * 0.95; // Start slightly lower
+    const now = Date.now();
+    const intervalMs = getIntervalMs(selectedInterval);
+
+    for (let i = count - 1; i >= 0; i--) {
+      const volatility = 0.02;
+      const change = (Math.random() - 0.48) * volatility * price;
+      const open = price;
+      const close = price + change;
+      const high = Math.max(open, close) * (1 + Math.random() * 0.01);
+      const low = Math.min(open, close) * (1 - Math.random() * 0.01);
+
+      candles.push({
+        timestamp: now - i * intervalMs,
+        open,
+        high,
+        low,
+        close,
+      });
+
+      price = close;
+    }
+
+    return candles;
+  };
+
+  // Convert interval string to milliseconds
+  const getIntervalMs = (interval: string): number => {
+    const map: Record<string, number> = {
+      '1m': 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '4h': 4 * 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000,
+    };
+    return map[interval] || 60 * 1000;
+  };
+
+  useEffect(() => {
+    if (stock) {
+      fetchCandleData();
+    }
+  }, [selectedInterval, stock?.id]);
 
   const handleTrade = async () => {
     const qty = parseInt(quantity);
@@ -227,31 +315,34 @@ export default function StockDetailScreen() {
             </View>
           </View>
 
-          {/* Chart Placeholder */}
+          {/* Candlestick Chart */}
           <Card className="mx-4 mb-4">
-            <CardContent className="items-center justify-center p-4">
-              <View className="h-48 w-full items-center justify-center rounded-lg bg-background">
-                <BarChart3 size={48} color={COLORS.textSecondary} />
-                <Text className="mt-2 text-sm text-text-secondary">
-                  K 線圖 (待實作)
-                </Text>
-              </View>
+            <CardContent className="p-4">
+              <CandlestickChart
+                data={candleData}
+                height={220}
+                loading={chartLoading}
+              />
 
               {/* Interval Buttons */}
-              <View className="mt-4 flex-row gap-2">
+              <View className="mt-4 flex-row flex-wrap justify-center gap-2">
                 {INTERVALS.map((int) => (
                   <Pressable
                     key={int.value}
-                    onPress={() => setInterval(int.value)}
-                    className={`rounded-lg px-3 py-1.5 ${
-                      interval === int.value
+                    onPress={() => setSelectedInterval(int.value)}
+                    className={`min-w-[48px] items-center rounded-lg px-3 py-2 ${
+                      selectedInterval === int.value
                         ? 'bg-primary'
-                        : 'bg-background-card'
+                        : 'bg-background'
                     }`}
+                    style={{
+                      borderWidth: selectedInterval === int.value ? 0 : 1,
+                      borderColor: COLORS.border,
+                    }}
                   >
                     <Text
-                      className={`text-xs font-medium ${
-                        interval === int.value
+                      className={`text-xs font-semibold ${
+                        selectedInterval === int.value
                           ? 'text-white'
                           : 'text-text-secondary'
                       }`}

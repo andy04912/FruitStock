@@ -105,7 +105,7 @@ export default function SlotsScreen() {
     totalBet: 0,
     totalPayout: 0,
   });
-  const autoSpinRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSpinRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Handle spin
   const handleSpin = useCallback(async () => {

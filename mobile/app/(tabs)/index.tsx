@@ -23,6 +23,7 @@ import {
 import { useSocket, Stock } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { Card, CardContent, Button } from '../../components/ui';
+import { NewsTicker } from '../../components/common';
 import { formatPrice, formatPercent } from '../../utils/format';
 import { sounds } from '../../utils/sound';
 import { COLORS, STOCK_CATEGORIES } from '../../utils/constants';
@@ -231,6 +232,9 @@ export default function DashboardScreen() {
           </Text>
         </View>
       </View>
+
+      {/* News Ticker */}
+      <NewsTicker />
 
       {marketData.stocks.length === 0 ? (
         // Loading State

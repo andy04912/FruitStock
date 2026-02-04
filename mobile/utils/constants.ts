@@ -6,9 +6,13 @@
 // For iOS simulator, localhost works fine
 // For physical devices, use your computer's IP address
 
-export const API_URL = __DEV__
-  ? 'http://10.0.2.2:8080/api'  // Android emulator
-  : 'https://your-production-api.com/api';
+// HTTPS Zeabur Backend (Available for all devices)
+export const API_URL = 'https://fruit-stock-api.zeabur.app/api';
+
+// Localhost Configuration (Commented out for now)
+// export const API_URL = __DEV__
+//   ? 'http://10.0.2.2:8080/api'  // Android emulator
+//   : 'https://your-production-api.com/api';
 
 // For development on different platforms, you might want to use:
 // const getApiUrl = () => {

@@ -110,8 +110,8 @@ export default function RaceScreen() {
   const fetchRace = useCallback(async () => {
     try {
       const [raceRes, betsRes] = await Promise.all([
-        axios.get(`${API_URL}/race/current`),
-        axios.get(`${API_URL}/race/my-bets`).catch(() => ({ data: [] })),
+        axios.get(`${API_URL}/race/next`),
+        axios.get(`${API_URL}/race/history`).catch(() => ({ data: [] })),
       ]);
 
       setRace(raceRes.data);

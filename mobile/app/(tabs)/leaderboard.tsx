@@ -34,13 +34,6 @@ interface LeaderboardEntry {
   rank_change?: number;
 }
 
-interface HallOfFameEntry {
-  user_id: number;
-  username: string;
-  nickname?: string;
-  champion_days: number;
-}
-
 // Podium Component for Top 3
 const Podium = ({ entries }: { entries: LeaderboardEntry[] }) => {
   const top3 = entries.slice(0, 3);
@@ -178,45 +171,21 @@ const LeaderboardRow = React.memo(
   }
 );
 
-// Hall of Fame Row
-const HallOfFameRow = React.memo(({ entry, rank }: { entry: HallOfFameEntry; rank: number }) => (
-  <Pressable onPress={() => router.push(`/profile/${entry.user_id}`)}>
-    <Card className="mb-2">
-      <CardContent className="flex-row items-center justify-between p-3">
-        <View className="flex-row items-center gap-3">
-          <Star size={20} color="#FFD700" fill="#FFD700" />
-          <Text className="text-sm font-semibold text-text-primary">
-            {entry.nickname || entry.username}
-          </Text>
-        </View>
-        <View className="flex-row items-center gap-1">
-          <Text className="font-mono text-sm font-bold text-primary">
-            {entry.champion_days}
-          </Text>
-          <Text className="text-xs text-text-secondary">天</Text>
-        </View>
-      </CardContent>
-    </Card>
-  </Pressable>
-));
-
-type TabType = 'global' | 'friends' | 'history' | 'fame';
+type TabType = 'global' | 'friends';
 
 export default function LeaderboardScreen() {
   const { API_URL, user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('global');
   const [globalData, setGlobalData] = useState<LeaderboardEntry[]>([]);
   const [friendsData, setFriendsData] = useState<LeaderboardEntry[]>([]);
-  const [hallOfFame, setHallOfFame] = useState<HallOfFameEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [globalRes, friendsRes, fameRes] = await Promise.all([
+      const [globalRes, friendsRes] = await Promise.all([
         axios.get(`${API_URL}/leaderboard?limit=100`),
         axios.get(`${API_URL}/leaderboard/friends`).catch(() => ({ data: [] })),
-        axios.get(`${API_URL}/leaderboard/hall-of-fame`).catch(() => ({ data: [] })),
       ]);
 
       setGlobalData(
@@ -231,7 +200,6 @@ export default function LeaderboardScreen() {
           rank: index + 1,
         }))
       );
-      setHallOfFame(fameRes.data || []);
     } catch (e) {
       console.error('Failed to fetch leaderboard:', e);
     } finally {
@@ -256,12 +224,7 @@ export default function LeaderboardScreen() {
     [user?.id]
   );
 
-  const renderFameItem = useCallback(
-    ({ item, index }: { item: HallOfFameEntry; index: number }) => (
-      <HallOfFameRow entry={item} rank={index + 1} />
-    ),
-    []
-  );
+
 
   const getCurrentData = () => {
     switch (activeTab) {
@@ -269,8 +232,6 @@ export default function LeaderboardScreen() {
         return globalData;
       case 'friends':
         return friendsData;
-      case 'fame':
-        return hallOfFame;
       default:
         return globalData;
     }
@@ -288,7 +249,6 @@ export default function LeaderboardScreen() {
         {[
           { key: 'global', label: '全服', icon: Trophy },
           { key: 'friends', label: '好友', icon: Users },
-          { key: 'fame', label: '名人堂', icon: Star },
         ].map(({ key, label, icon: Icon }) => (
           <Pressable
             key={key}
@@ -328,15 +288,9 @@ export default function LeaderboardScreen() {
           {/* List */}
           <FlashList
             data={
-              activeTab === 'fame'
-                ? getCurrentData()
-                : (getCurrentData() as LeaderboardEntry[]).slice(3)
+              (getCurrentData() as LeaderboardEntry[]).slice(3)
             }
-            renderItem={
-              activeTab === 'fame'
-                ? (renderFameItem as any)
-                : renderLeaderboardItem
-            }
+            renderItem={renderLeaderboardItem}
             keyExtractor={(item: any) =>
               item.user_id?.toString() || item.id?.toString()
             }

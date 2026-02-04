@@ -49,8 +49,8 @@ interface Prediction {
 // News Item Component
 const NewsCard = React.memo(({ item }: { item: NewsItem }) => {
   const isRace = item.event_type?.toLowerCase().includes('race');
-  const isBullish = item.impact_multiplier && item.impact_multiplier > 1;
-  const isBearish = item.impact_multiplier && item.impact_multiplier < 1;
+  const isBullish = !!(item.impact_multiplier && item.impact_multiplier > 1);
+  const isBearish = !!(item.impact_multiplier && item.impact_multiplier < 1);
 
   return (
     <Card className="mb-3">
@@ -163,7 +163,7 @@ export default function NewsScreen() {
   const fetchData = useCallback(async () => {
     try {
       const [newsRes, predictionsRes] = await Promise.all([
-        axios.get(`${API_URL}/events?limit=50`),
+        axios.get(`${API_URL}/news?limit=50`),
         axios.get(`${API_URL}/predictions?limit=30`),
       ]);
       setNews(newsRes.data || []);

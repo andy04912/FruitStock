@@ -323,7 +323,7 @@ export default function BlackjackScreen() {
                     <Text className={`text-center text-2xl font-bold ${getResultColor()}`}>
                       {getResultText()}
                     </Text>
-                    {game.payout && game.payout > 0 && (
+                    {!!game.payout && game.payout > 0 && (
                       <Text className="mt-1 text-center text-lg text-bullish">
                         +{formatMoney(game.payout)}
                       </Text>

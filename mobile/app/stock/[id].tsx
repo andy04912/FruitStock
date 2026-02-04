@@ -434,8 +434,6 @@ export default function StockDetailScreen() {
                 {[
                   { key: 'buy', label: '買入', color: COLORS.bullish },
                   { key: 'sell', label: '賣出', color: COLORS.bearish },
-                  { key: 'short', label: '做空', color: COLORS.secondary },
-                  { key: 'cover', label: '回補', color: COLORS.primary },
                 ].map(({ key, label, color }) => (
                   <Pressable
                     key={key}

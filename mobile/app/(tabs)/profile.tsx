@@ -27,7 +27,6 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { Card, CardContent, Button, Badge } from '../../components/ui';
-import { LineChart } from '../../components/charts';
 import { COLORS } from '../../utils/constants';
 import {
   formatMoney,
@@ -250,7 +249,6 @@ export default function ProfileScreen() {
   const [portfolio, setPortfolio] = useState<Portfolio[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<ProfileStats | null>(null);
-  const [assetHistory, setAssetHistory] = useState<AssetHistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [editingNickname, setEditingNickname] = useState(false);
@@ -258,21 +256,13 @@ export default function ProfileScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [portfolioRes, transactionsRes, historyRes] = await Promise.all([
+      const [portfolioRes, transactionsRes] = await Promise.all([
         axios.get(`${API_URL}/portfolio`),
         axios.get(`${API_URL}/transactions?limit=50`),
-        axios.get(`${API_URL}/users/me/asset-history`).catch(() => ({ data: [] })),
       ]);
 
       setPortfolio(portfolioRes.data || []);
       setTransactions(transactionsRes.data || []);
-
-      // Transform asset history for chart
-      const history = (historyRes.data || []).map((item: any) => ({
-        timestamp: new Date(item.timestamp || item.created_at).getTime(),
-        value: item.net_worth || item.value || 0,
-      }));
-      setAssetHistory(history);
 
       await refreshUser();
     } catch (e) {
@@ -457,21 +447,7 @@ export default function ProfileScreen() {
               todayPnl={todayPnl}
             />
 
-            {/* Asset History Chart */}
-            {assetHistory.length > 0 && (
-              <Card className="mx-4 mb-4">
-                <CardContent className="p-4">
-                  <Text className="mb-3 font-semibold text-text-primary">
-                    資產走勢
-                  </Text>
-                  <LineChart
-                    data={assetHistory}
-                    height={150}
-                    formatValue={(v) => formatSmartMoney(v)}
-                  />
-                </CardContent>
-              </Card>
-            )}
+
 
             {/* Quick Holdings Preview */}
             {longPositions.length > 0 && (

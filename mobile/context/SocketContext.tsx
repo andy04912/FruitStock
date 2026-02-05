@@ -98,7 +98,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // WebSocket connection
   useEffect(() => {
     // Determine WS URL
-    const wsUrl = API_URL.replace('http', 'ws') + '/ws';
+    const wsUrl = API_URL.replace(/^http/, 'ws') + '/ws';
 
     // Connect
     const ws = new WebSocket(wsUrl);
@@ -114,8 +114,31 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const data = JSON.parse(event.data);
         if (data.type === 'tick') {
           // Update market state
+          // Update market state with calculated change_percent
+          const rawStocks = data.stocks || [];
+          const processedStocks = rawStocks.map((stock: any) => {
+            // Calculate change percent if not provided
+            // Use day_open (prev_close) as base
+            const basePrice = stock.day_open || stock.prev_close || stock.price;
+            let changePercent = stock.change_percent;
+            
+            if (changePercent === undefined || changePercent === null) {
+              if (basePrice > 0) {
+                changePercent = ((stock.price - basePrice) / basePrice) * 100;
+              } else {
+                changePercent = 0;
+              }
+            }
+            
+            return {
+              ...stock,
+              change_percent: changePercent,
+              prev_close: basePrice, // Ensure prev_close is mapped from day_open if needed
+            };
+          });
+
           setMarketData({
-            stocks: data.stocks || [],
+            stocks: processedStocks,
             event: data.event || null,
             race: data.race || null,
             forecast: data.forecast || null,

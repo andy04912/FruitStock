@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text } from 'react-native';
 import {
+  Gamepad2,
   TrendingUp,
   Newspaper,
   Trophy,
@@ -52,11 +53,11 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="games"
         options={{
-          title: '市場',
+          title: '娛樂',
           tabBarIcon: ({ focused }) => (
-            <TabIcon Icon={TrendingUp} label="市場" focused={focused} />
+            <TabIcon Icon={Gamepad2} label="娛樂" focused={focused} />
           ),
         }}
       />
@@ -66,6 +67,15 @@ export default function TabsLayout() {
           title: '新聞',
           tabBarIcon: ({ focused }) => (
             <TabIcon Icon={Newspaper} label="新聞" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: '市場',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon Icon={TrendingUp} label="市場" focused={focused} />
           ),
         }}
       />

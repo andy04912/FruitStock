@@ -12,36 +12,17 @@ export const formatMoney = (value: number | null | undefined, decimals = 2): str
   if (value === null || value === undefined || isNaN(value)) {
     return '$0.00';
   }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
+  // Use simple implementation to avoid Worklet/Intl issues
+  return '$' + value.toFixed(decimals).replace(/\d(?=(\d{3})+\.)/g, '$&,');
 };
 
-/**
- * 格式化數字（帶千位分隔符）
- * @param value - 數字
- * @param decimals - 小數位數，預設 0
- * @returns 格式化後的數字，例如：1,234
- */
 export const formatNumber = (value: number | null | undefined, decimals = 0): string => {
   if (value === null || value === undefined || isNaN(value)) {
     return '0';
   }
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
+  return value.toFixed(decimals).replace(/\d(?=(\d{3})+\.)/g, '$&,');
 };
 
-/**
- * 格式化百分比
- * @param value - 數值（0.05 表示 5%）
- * @param decimals - 小數位數，預設 2
- * @returns 格式化後的百分比，例如：+5.23%
- */
 export const formatPercent = (value: number | null | undefined, decimals = 2): string => {
   if (value === null || value === undefined || isNaN(value)) {
     return '0.00%';
@@ -50,11 +31,6 @@ export const formatPercent = (value: number | null | undefined, decimals = 2): s
   return `${sign}${value.toFixed(decimals)}%`;
 };
 
-/**
- * 格式化價格（股價）
- * @param value - 價格
- * @returns 格式化後的價格，例如：$1,234.56
- */
 export const formatPrice = (value: number | null | undefined): string => {
   return formatMoney(value, 2);
 };

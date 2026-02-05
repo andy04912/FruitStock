@@ -11,7 +11,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { toast } from 'burnt';
-import { TrendingUp } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { Button, Input, Card, CardHeader, CardTitle, CardContent } from '../../components/ui';
 import { sounds } from '../../utils/sound';
@@ -113,8 +112,12 @@ export default function LoginScreen() {
           <Card className="mx-auto w-full max-w-[350px]">
             <CardHeader className="items-center">
               {/* Logo */}
-              <View className="mb-4 h-20 w-20 items-center justify-center rounded-xl border-2 border-primary/20 bg-primary/10">
-                <TrendingUp size={40} color={COLORS.primary} />
+              <View className="mb-4 shadow-lg">
+                <Image
+                  source={require('../../assets/logo.jpg')}
+                  className="h-20 w-20 rounded-xl border-2 border-white/20"
+                  resizeMode="cover"
+                />
               </View>
 
               {/* App Title */}

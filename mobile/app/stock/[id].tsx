@@ -563,7 +563,7 @@ export default function StockDetailScreen() {
                     {(stock.volatility * 100).toFixed(1)}%
                   </Text>
                 </View>
-                {stock.dividend_yield && (
+                {!!stock.dividend_yield && (
                   <View className="flex-row justify-between">
                     <Text className="text-sm text-text-secondary">股息率</Text>
                     <Text className="text-sm text-primary">
